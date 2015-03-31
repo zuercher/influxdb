@@ -1658,12 +1658,14 @@ func (s *Server) WriteSeries(database, retentionPolicy string, points []Point) (
 			database, retentionPolicy, len(points))
 	}
 
+	fmt.Println("starting field check")
 	// Make sure every point has at least one field.
 	for _, p := range points {
 		if len(p.Fields) == 0 {
 			return 0, ErrFieldsRequired
 		}
 	}
+	fmt.Println("finished field check")
 
 	// If the retention policy is not set, use the default for this database.
 	if retentionPolicy == "" {
@@ -1676,10 +1678,12 @@ func (s *Server) WriteSeries(database, retentionPolicy string, points []Point) (
 		retentionPolicy = rp.Name
 	}
 
+	fmt.Println("starting create measurements")
 	// Ensure all required Series and Measurement Fields are created cluster-wide.
 	if err := s.createMeasurementsIfNotExists(database, retentionPolicy, points); err != nil {
 		return 0, err
 	}
+	fmt.Println("finished create measurements")
 	if s.WriteTrace {
 		log.Printf("measurements and series created on database '%s'", database)
 	}
@@ -1796,6 +1800,7 @@ func (s *Server) createMeasurementsIfNotExists(database, retentionPolicy string,
 			return fmt.Errorf("database not found %q", database)
 		}
 
+		fmt.Println("starting point scan")
 		for _, p := range points {
 			measurement, series := db.MeasurementAndSeries(p.Name, p.Tags)
 
@@ -1820,6 +1825,7 @@ func (s *Server) createMeasurementsIfNotExists(database, retentionPolicy string,
 				}
 			}
 		}
+		fmt.Println("finished point scan")
 
 		return nil
 	}()

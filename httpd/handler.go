@@ -320,7 +320,9 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *influ
 		}
 		dec = json.NewDecoder(strings.NewReader(string(b)))
 	} else {
+		fmt.Println("starting json decoder")
 		dec = json.NewDecoder(r.Body)
+		fmt.Println("finished json decoder")
 		defer r.Body.Close()
 	}
 
@@ -360,12 +362,15 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *influ
 		return
 	}
 
+	fmt.Println("starting normalize")
 	points, err := influxdb.NormalizeBatchPoints(bp)
+	fmt.Println("finished normalize")
 	if err != nil {
 		writeError(influxdb.Result{Err: err}, http.StatusInternalServerError)
 		return
 	}
 
+	fmt.Println("starting write series")
 	if index, err := h.server.WriteSeries(bp.Database, bp.RetentionPolicy, points); err != nil {
 		writeError(influxdb.Result{Err: err}, http.StatusInternalServerError)
 		return
