@@ -197,7 +197,7 @@ func TestSelectStatement_SetTimeRange(t *testing.T) {
 
 	// ensure the where clause is there
 	hasWhere := false
-	influxql.WalkFunc(s.Condition, func(n influxql.Node) {
+	influxql.WalkFunc(s.Condition, nil, func(n, p influxql.Node) {
 		if ex, ok := n.(*influxql.BinaryExpr); ok {
 			if lhs, ok := ex.LHS.(*influxql.VarRef); ok {
 				if lhs.Val == "foo" {

@@ -620,7 +620,7 @@ func (m *Measurement) uniqueTagValues(expr influxql.Expr) map[string][]string {
 	tags := make(map[string]map[string]struct{})
 
 	// Find all tag values referenced in the expression.
-	influxql.WalkFunc(expr, func(n influxql.Node) {
+	influxql.WalkFunc(expr, nil, func(n, p influxql.Node) {
 		switch n := n.(type) {
 		case *influxql.BinaryExpr:
 			// Ignore operators that are not equality.

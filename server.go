@@ -3167,7 +3167,7 @@ func (s *Server) normalizeStatement(stmt influxql.Statement, defaultDatabase str
 	prefixes := make(map[string]string)
 
 	// Qualify all measurements.
-	influxql.WalkFunc(stmt, func(n influxql.Node) {
+	influxql.WalkFunc(stmt, nil, func(n, p influxql.Node) {
 		if err != nil {
 			return
 		}
@@ -3186,7 +3186,7 @@ func (s *Server) normalizeStatement(stmt influxql.Statement, defaultDatabase str
 	}
 
 	// Replace all variable references that used measurement prefixes.
-	influxql.WalkFunc(stmt, func(n influxql.Node) {
+	influxql.WalkFunc(stmt, nil, func(n, p influxql.Node) {
 		switch n := n.(type) {
 		case *influxql.VarRef:
 			for k, v := range prefixes {

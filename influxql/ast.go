@@ -1947,7 +1947,7 @@ func CloneExpr(expr Expr) Expr {
 // TimeRange returns the minimum and maximum times specified by an expression.
 // Returns zero times if there is no bound.
 func TimeRange(expr Expr) (min, max time.Time) {
-	WalkFunc(expr, func(n Node) {
+	WalkFunc(expr, nil, func(n, p Node) {
 		if n, ok := n.(*BinaryExpr); ok {
 			// Extract literal expression & operator on LHS.
 			// Check for "time" on the left-hand side first.
@@ -2016,106 +2016,106 @@ func timeExprValue(ref Expr, lit Expr) time.Time {
 // Visitor can be called by Walk to traverse an AST hierarchy.
 // The Visit() function is called once per node.
 type Visitor interface {
-	Visit(Node) Visitor
+	Visit(node, parent Node) Visitor
 }
 
 // Walk traverses a node hierarchy in depth-first order.
-func Walk(v Visitor, node Node) {
+func Walk(v Visitor, node, parent Node) {
 	if node == nil {
 		return
 	}
 
-	if v = v.Visit(node); v == nil {
+	if v = v.Visit(node, parent); v == nil {
 		return
 	}
 
 	switch n := node.(type) {
 	case *BinaryExpr:
-		Walk(v, n.LHS)
-		Walk(v, n.RHS)
+		Walk(v, n.LHS, n)
+		Walk(v, n.RHS, n)
 
 	case *Call:
 		for _, expr := range n.Args {
-			Walk(v, expr)
+			Walk(v, expr, n)
 		}
 
 	case *CreateContinuousQueryStatement:
-		Walk(v, n.Source)
+		Walk(v, n.Source, n)
 
 	case *Dimension:
-		Walk(v, n.Expr)
+		Walk(v, n.Expr, n)
 
 	case Dimensions:
 		for _, c := range n {
-			Walk(v, c)
+			Walk(v, c, n)
 		}
 
 	case *Field:
-		Walk(v, n.Expr)
+		Walk(v, n.Expr, n)
 
 	case Fields:
 		for _, c := range n {
-			Walk(v, c)
+			Walk(v, c, n)
 		}
 
 	case *ParenExpr:
-		Walk(v, n.Expr)
+		Walk(v, n.Expr, n)
 
 	case *Query:
-		Walk(v, n.Statements)
+		Walk(v, n.Statements, n)
 
 	case *SelectStatement:
-		Walk(v, n.Fields)
-		Walk(v, n.Target)
-		Walk(v, n.Dimensions)
-		Walk(v, n.Sources)
-		Walk(v, n.Condition)
-		Walk(v, n.SortFields)
+		Walk(v, n.Fields, n)
+		Walk(v, n.Target, n)
+		Walk(v, n.Dimensions, n)
+		Walk(v, n.Sources, n)
+		Walk(v, n.Condition, n)
+		Walk(v, n.SortFields, n)
 
 	case *ShowSeriesStatement:
-		Walk(v, n.Source)
-		Walk(v, n.Condition)
+		Walk(v, n.Source, n)
+		Walk(v, n.Condition, n)
 
 	case *ShowTagKeysStatement:
-		Walk(v, n.Source)
-		Walk(v, n.Condition)
-		Walk(v, n.SortFields)
+		Walk(v, n.Source, n)
+		Walk(v, n.Condition, n)
+		Walk(v, n.SortFields, n)
 
 	case *ShowTagValuesStatement:
-		Walk(v, n.Source)
-		Walk(v, n.Condition)
-		Walk(v, n.SortFields)
+		Walk(v, n.Source, n)
+		Walk(v, n.Condition, n)
+		Walk(v, n.SortFields, n)
 
 	case SortFields:
 		for _, sf := range n {
-			Walk(v, sf)
+			Walk(v, sf, n)
 		}
 
 	case Sources:
 		for _, s := range n {
-			Walk(v, s)
+			Walk(v, s, n)
 		}
 
 	case Statements:
 		for _, s := range n {
-			Walk(v, s)
+			Walk(v, s, n)
 		}
 
 	case *Target:
 		if n != nil {
-			Walk(v, n.Measurement)
+			Walk(v, n.Measurement, n)
 		}
 	}
 }
 
 // WalkFunc traverses a node hierarchy in depth-first order.
-func WalkFunc(node Node, fn func(Node)) {
-	Walk(walkFuncVisitor(fn), node)
+func WalkFunc(node, parent Node, fn func(node, parent Node)) {
+	Walk(walkFuncVisitor(fn), node, parent)
 }
 
-type walkFuncVisitor func(Node)
+type walkFuncVisitor func(node, parent Node)
 
-func (fn walkFuncVisitor) Visit(n Node) Visitor { fn(n); return fn }
+func (fn walkFuncVisitor) Visit(n, p Node) Visitor { fn(n, p); return fn }
 
 // Rewriter can be called by Rewrite to replace nodes in the AST hierarchy.
 // The Rewrite() function is called once per node.
