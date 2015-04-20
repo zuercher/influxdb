@@ -1357,6 +1357,53 @@ func (r *TopicReader) Close() error {
 // MessageType represents the type of message.
 type MessageType uint16
 
+func (mt MessageType) String() string {
+	name := "unkown message type"
+	switch mt {
+	case 0x00:
+		name = "createDataNodeMessageType"
+	case 0x01:
+		name = "deleteDataNodeMessageType"
+	}
+	return fmt.Sprintf("%s(%x)", name, uint16(mt))
+	//// Database messages
+	//createDatabaseMessageType = messaging.MessageType(0x10)
+	//dropDatabaseMessageType   = messaging.MessageType(0x11)
+
+	//// Retention policy messages
+	//createRetentionPolicyMessageType     = messaging.MessageType(0x20)
+	//updateRetentionPolicyMessageType     = messaging.MessageType(0x21)
+	//deleteRetentionPolicyMessageType     = messaging.MessageType(0x22)
+	//setDefaultRetentionPolicyMessageType = messaging.MessageType(0x23)
+
+	//// User messages
+	//createUserMessageType = messaging.MessageType(0x30)
+	//updateUserMessageType = messaging.MessageType(0x31)
+	//deleteUserMessageType = messaging.MessageType(0x32)
+
+	//// Shard messages
+	//createShardGroupIfNotExistsMessageType = messaging.MessageType(0x40)
+	//deleteShardGroupMessageType            = messaging.MessageType(0x41)
+
+	//// Series messages
+	//dropSeriesMessageType = messaging.MessageType(0x50)
+
+	//// Measurement messages
+	//createMeasurementsIfNotExistsMessageType = messaging.MessageType(0x60)
+	//dropMeasurementMessageType               = messaging.MessageType(0x61)
+
+	//// Continuous Query messages
+	//createContinuousQueryMessageType = messaging.MessageType(0x70)
+	//dropContinuousQueryMessageType   = messaging.MessageType(0x71)
+
+	//// Write series data messages (per-topic)
+	//writeRawSeriesMessageType = messaging.MessageType(0x80)
+
+	//// Privilege messages
+	//setPrivilegeMessageType = messaging.MessageType(0x90)
+
+}
+
 // BrokerMessageType is a flag set on broker messages to prevent them
 // from being passed through to topics.
 const BrokerMessageType = 0x8000
