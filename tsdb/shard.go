@@ -26,6 +26,8 @@ type Shard struct {
 
 	mu                sync.RWMutex
 	measurementFields map[string]*measurementFields // measurement name to their fields
+	keyIDs            map[string][]byte
+	nextID            uint32
 }
 
 // NewShard returns a new initialized Shard
@@ -34,6 +36,7 @@ func NewShard(index *DatabaseIndex, path string) *Shard {
 		index:             index,
 		path:              path,
 		measurementFields: make(map[string]*measurementFields),
+		keyIDs:            make(map[string][]byte),
 	}
 }
 
@@ -123,6 +126,9 @@ func (s *Shard) WritePoints(points []Point) error {
 	if len(seriesToCreate) > 0 {
 		s.index.mu.Lock()
 		for _, ss := range seriesToCreate {
+			ss.series.ID = s.nextID + 1
+			s.nextID += 1
+			s.keyIDs[ss.series.Key] = u32tob(ss.series.ID)
 			s.index.createSeriesIndexIfNotExists(ss.measurement, ss.series)
 		}
 		s.index.mu.Unlock()
@@ -180,10 +186,15 @@ func (s *Shard) WritePoints(points []Point) error {
 
 		// save the raw point data
 		for _, p := range points {
-			bp, err := tx.CreateBucketIfNotExists(p.Key())
+			s.mu.RLock()
+			bucketName := append(s.keyIDs[string(p.Key())])
+			s.mu.RUnlock()
+			bp, err := tx.CreateBucketIfNotExists(bucketName)
 			if err != nil {
 				return err
 			}
+			bp.FillPercent = 1.0
+
 			if err := bp.Put(u64tob(uint64(p.UnixNano())), p.Data()); err != nil {
 				return err
 			}
@@ -411,6 +422,10 @@ func (s *Shard) loadMetadataIndex() error {
 			series := &Series{}
 			if err := series.UnmarshalBinary(v); err != nil {
 				return err
+			}
+			s.keyIDs[series.Key] = u32tob(series.ID)
+			if s.nextID < series.ID {
+				s.nextID = series.ID
 			}
 			s.index.createSeriesIndexIfNotExists(measurementFromSeriesKey(string(k)), series)
 		}
@@ -807,6 +822,18 @@ func u64tob(v uint64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, v)
 	return b
+}
+
+// u32tob converts a uint32 into an 4-byte slice.
+func u32tob(v uint32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, v)
+	return b
+}
+
+// btou32 convers a 4-byte slice to a uint32
+func btou32(b []byte) uint32 {
+	return binary.BigEndian.Uint32(b)
 }
 
 var (

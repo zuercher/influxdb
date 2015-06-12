@@ -929,10 +929,11 @@ func (a Measurements) union(other Measurements) Measurements {
 
 // Series belong to a Measurement and represent unique time series in a database
 type Series struct {
+	ID   uint32 // this is the persisted ID for the series within a given Shard
 	Key  string
 	Tags map[string]string
 
-	id          uint64
+	id          uint64 // this is an ephemeral id for the in memory index. Must be the same across all shards on the server
 	measurement *Measurement
 }
 
