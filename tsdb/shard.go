@@ -64,6 +64,7 @@ func (s *Shard) Open() error {
 	if err := s.db.Update(func(tx *bolt.Tx) error {
 		_, _ = tx.CreateBucketIfNotExists([]byte("series"))
 		_, _ = tx.CreateBucketIfNotExists([]byte("fields"))
+		_, _ = tx.CreateBucketIfNotExists([]byte("points"))
 
 		return nil
 	}); err != nil {
@@ -184,12 +185,14 @@ func (s *Shard) WritePoints(points []Point) error {
 			}
 		}
 
+		b := tx.Bucket([]byte("points"))
+		b.FillPercent = 1.0
 		// save the raw point data
 		for _, p := range points {
 			s.mu.RLock()
-			bucketName := append(s.keyIDs[string(p.Key())])
+			bucketName := s.keyIDs[string(p.Key())]
 			s.mu.RUnlock()
-			bp, err := tx.CreateBucketIfNotExists(bucketName)
+			bp, err := b.CreateBucketIfNotExists(bucketName)
 			if err != nil {
 				return err
 			}
