@@ -108,6 +108,9 @@ func main() {
 		}
 	}
 	tw.Flush()
+	if err := dumpData(tstore); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func countSeries(tstore *tsdb.Store) int {
@@ -122,6 +125,89 @@ func countSeries(tstore *tsdb.Store) int {
 		count += cnt
 	}
 	return count
+}
+
+func dumpData(tstore *tsdb.Store) error {
+	shardIDs := tstore.ShardIDs()
+
+	databases := tstore.Databases()
+	sort.Strings(databases)
+
+	fmt.Println("# DML")
+	for _, db := range databases {
+		fmt.Printf("# CONTEXT-DATABASE:%s\n", db)
+		fmt.Printf("# CONTEXT-RETENTION-POLICY:default\n")
+		index := tstore.DatabaseIndex(db)
+		measurements := index.Measurements()
+		sort.Sort(measurements)
+		for _, m := range measurements {
+			tags := m.TagKeys()
+			tagValues := 0
+			for _, tag := range tags {
+				tagValues += len(m.TagValues(tag))
+			}
+			fields := m.FieldNames()
+			sort.Strings(fields)
+			series := m.SeriesKeys()
+			sort.Strings(series)
+			sort.Sort(ShardIDs(shardIDs))
+
+			// Sample a point from each measurement to determine the field types
+			for _, shardID := range shardIDs {
+				shard := tstore.Shard(shardID)
+				tx, err := shard.ReadOnlyTx()
+				if err != nil {
+					fmt.Printf("Failed to get transaction: %v", err)
+				}
+
+				for _, key := range series {
+					cursor := tx.Cursor(key, tsdb.Forward)
+
+					// Series doesn't exist in this shard
+					if cursor == nil {
+						continue
+					}
+
+					// Seek to the beginning
+					codec := shard.FieldCodec(m.Name)
+					if codec != nil {
+						for ts, value := cursor.Seek([]byte{}); value != nil; ts, value = cursor.Next() {
+							fieldSummary := []string{}
+							fields, err := codec.DecodeFieldsWithNames(value)
+							if err != nil {
+								fmt.Printf("Failed to decode values: %v", err)
+							}
+
+							for field, value := range fields {
+								fieldSummary = append(fieldSummary, fmt.Sprintf("%s=%v", field, value))
+							}
+							fmt.Printf("%s %s %d\n", key, strings.Join(fieldSummary, ","), int64(btou64(ts)))
+						}
+					}
+				}
+				tx.Rollback()
+			}
+		}
+	}
+	//q, err := influxql.ParseQuery("select * from /.*/")
+	//if err != nil {
+	//	return err
+	//}
+	//for _, shardID := range tstore.ShardIDs() {
+	//	m, err := tstore.CreateMapper(shardID, q.Statements[0], 10000)
+	//	if err != nil {
+	//		return err
+	//	}
+
+	//	c, err := m.NextChunk()
+	//	if err != nil {
+	//		return err
+	//	}
+
+	//	spew.Dump(c)
+	//}
+
+	return nil
 }
 
 func btou64(b []byte) uint64 {
