@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bufio"
+	"compress/gzip"
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime/pprof"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -18,18 +23,52 @@ import (
 
 func main() {
 
-	var path string
-	flag.StringVar(&path, "p", os.Getenv("HOME")+"/.influxdb", "Root storage path. [$HOME/.influxdb]")
+	var inpath string
+	var outpath string
+	var cpuprofile string
+	flag.StringVar(&inpath, "p", os.Getenv("HOME")+"/.influxdb", "Root storage path. [$HOME/.influxdb]")
+	flag.StringVar(&outpath, "o", "", "output file name")
+	flag.StringVar(&cpuprofile, "cpuprofile", "", "name of CPU profile file to generate")
 	flag.Parse()
 
-	tstore := tsdb.NewStore(filepath.Join(path, "data"))
+	if cpuprofile != "" {
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	tstore := tsdb.NewStore(filepath.Join(inpath, "data"))
 	tstore.Logger = log.New(ioutil.Discard, "", log.LstdFlags)
-	tstore.EngineOptions.Config.Dir = filepath.Join(path, "data")
+	tstore.EngineOptions.Config.Dir = filepath.Join(inpath, "data")
 	tstore.EngineOptions.Config.WALLoggingEnabled = false
-	tstore.EngineOptions.Config.WALDir = filepath.Join(path, "wal")
+	tstore.EngineOptions.Config.WALDir = filepath.Join(inpath, "wal")
 	if err := tstore.Open(); err != nil {
 		fmt.Printf("Failed to open dir: %v\n", err)
 		os.Exit(1)
+	}
+
+	var w io.Writer = os.Stdout
+	var err error
+
+	if outpath != "" {
+		// Open or create the output file for writing.
+		w, err = os.OpenFile(outpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
+		if err != nil {
+			fmt.Printf("Failed to open: %s\n", err)
+			os.Exit(1)
+		}
+		defer w.(*os.File).Close()
+		// Create a compressed writer if the file extention is .gz.
+		if path.Ext(outpath) == ".gz" {
+			w = gzip.NewWriter(w)
+			if err != nil {
+				fmt.Printf("Failed to create gzip writer: %s\n", err)
+				os.Exit(1)
+			}
+		}
 	}
 
 	size, err := tstore.DiskSize()
@@ -38,11 +77,11 @@ func main() {
 	}
 
 	// Summary stats
-	fmt.Printf("# Shards: %d, Indexes: %d, Databases: %d, Disk Size: %d, Series: %d\n",
+	fmt.Fprintf(w, "# Shards: %d, Indexes: %d, Databases: %d, Disk Size: %d, Series: %d\n",
 		tstore.ShardN(), tstore.DatabaseIndexN(), len(tstore.Databases()), size, countSeries(tstore))
-	fmt.Println("#")
+	fmt.Fprintln(w, "#")
 
-	tw := tabwriter.NewWriter(os.Stdout, 16, 8, 0, '\t', 0)
+	tw := tabwriter.NewWriter(w, 16, 8, 0, '\t', 0)
 
 	fmt.Fprintln(tw, strings.Join([]string{"# Shard", "DB", "Measurement", "Tags [#K/#V]", "Fields [Name:Type]", "Series"}, "\t"))
 
@@ -108,7 +147,7 @@ func main() {
 		}
 	}
 	tw.Flush()
-	if err := dumpData(tstore); err != nil {
+	if err := dumpData(tstore, w); err != nil {
 		fmt.Println(err)
 	}
 }
@@ -127,16 +166,18 @@ func countSeries(tstore *tsdb.Store) int {
 	return count
 }
 
-func dumpData(tstore *tsdb.Store) error {
+func dumpData(tstore *tsdb.Store, w io.Writer) error {
+	w = bufio.NewWriterSize(w, 32000000)
+	defer w.(*bufio.Writer).Flush()
 	shardIDs := tstore.ShardIDs()
 
 	databases := tstore.Databases()
 	sort.Strings(databases)
 
-	fmt.Println("# DML")
+	fmt.Fprintln(w, "# DML")
 	for _, db := range databases {
-		fmt.Printf("# CONTEXT-DATABASE:%s\n", db)
-		fmt.Printf("# CONTEXT-RETENTION-POLICY:default\n")
+		fmt.Fprintf(w, "# CONTEXT-DATABASE:%s\n", db)
+		fmt.Fprintf(w, "# CONTEXT-RETENTION-POLICY:default\n")
 		index := tstore.DatabaseIndex(db)
 		measurements := index.Measurements()
 		sort.Sort(measurements)
@@ -181,7 +222,7 @@ func dumpData(tstore *tsdb.Store) error {
 							for field, value := range fields {
 								fieldSummary = append(fieldSummary, fmt.Sprintf("%s=%v", field, value))
 							}
-							fmt.Printf("%s %s %d\n", key, strings.Join(fieldSummary, ","), int64(btou64(ts)))
+							fmt.Fprintf(w, "%s %s %d\n", key, strings.Join(fieldSummary, ","), int64(btou64(ts)))
 						}
 					}
 				}
