@@ -38,13 +38,13 @@ func main() {
 	}
 
 	// Summary stats
-	fmt.Printf("Shards: %d, Indexes: %d, Databases: %d, Disk Size: %d, Series: %d\n",
+	fmt.Printf("# Shards: %d, Indexes: %d, Databases: %d, Disk Size: %d, Series: %d\n",
 		tstore.ShardN(), tstore.DatabaseIndexN(), len(tstore.Databases()), size, countSeries(tstore))
-	fmt.Println()
+	fmt.Println("#")
 
 	tw := tabwriter.NewWriter(os.Stdout, 16, 8, 0, '\t', 0)
 
-	fmt.Fprintln(tw, strings.Join([]string{"Shard", "DB", "Measurement", "Tags [#K/#V]", "Fields [Name:Type]", "Series"}, "\t"))
+	fmt.Fprintln(tw, strings.Join([]string{"# Shard", "DB", "Measurement", "Tags [#K/#V]", "Fields [Name:Type]", "Series"}, "\t"))
 
 	shardIDs := tstore.ShardIDs()
 
@@ -99,7 +99,7 @@ func main() {
 						}
 						sort.Strings(fieldSummary)
 					}
-					fmt.Fprintf(tw, "%d\t%s\t%s\t%d/%d\t%d [%s]\t%d\n", shardID, db, m.Name, len(tags), tagValues,
+					fmt.Fprintf(tw, "# %d\t%s\t%s\t%d/%d\t%d [%s]\t%d\n", shardID, db, m.Name, len(tags), tagValues,
 						len(fields), strings.Join(fieldSummary, ","), len(series))
 					break
 				}
