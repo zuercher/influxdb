@@ -75,14 +75,15 @@ type Handler struct {
 
 	ContinuousQuerier continuous_querier.ContinuousQuerier
 
-	Logger         *log.Logger
-	loggingEnabled bool // Log every HTTP access.
-	WriteTrace     bool // Detailed logging of write path
-	statMap        *expvar.Map
+	Logger          *log.Logger
+	loggingEnabled  bool // Log every HTTP access.
+	WriteTrace      bool // Detailed logging of write path
+	statMap         *expvar.Map
+	disableRecovery bool // should we disable panic recovery
 }
 
 // NewHandler returns a new instance of handler with routes.
-func NewHandler(requireAuthentication, loggingEnabled, writeTrace bool, statMap *expvar.Map) *Handler {
+func NewHandler(requireAuthentication, loggingEnabled, writeTrace, disableRecovery bool, statMap *expvar.Map) *Handler {
 	h := &Handler{
 		mux: pat.New(),
 		requireAuthentication: requireAuthentication,
@@ -90,6 +91,7 @@ func NewHandler(requireAuthentication, loggingEnabled, writeTrace bool, statMap 
 		loggingEnabled:        loggingEnabled,
 		WriteTrace:            writeTrace,
 		statMap:               statMap,
+		disableRecovery:       disableRecovery,
 	}
 
 	h.SetRoutes([]route{
@@ -149,7 +151,9 @@ func (h *Handler) SetRoutes(routes []route) {
 		if h.loggingEnabled && r.log {
 			handler = logging(handler, r.name, h.Logger)
 		}
-		handler = recovery(handler, r.name, h.Logger) // make sure recovery is always last
+		if !h.disableRecovery {
+			handler = recovery(handler, r.name, h.Logger) // make sure recovery is always last
+		}
 
 		h.mux.Add(r.method, r.pattern, handler)
 	}

@@ -58,6 +58,7 @@ func NewService(c Config) *Service {
 			c.AuthEnabled,
 			c.LogEnabled,
 			c.WriteTracing,
+			c.DisableRecovery,
 			statMap,
 		),
 		Logger: log.New(os.Stderr, "[httpd] ", log.LstdFlags),
