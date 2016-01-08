@@ -3,6 +3,7 @@ package httpd
 // Config represents a configuration for a HTTP service.
 type Config struct {
 	Enabled          bool   `toml:"enabled"`
+	DisableRecovery  bool   `toml:"disable-recovery"`
 	BindAddress      string `toml:"bind-address"`
 	AuthEnabled      bool   `toml:"auth-enabled"`
 	LogEnabled       bool   `toml:"log-enabled"`
@@ -20,5 +21,6 @@ func NewConfig() Config {
 		LogEnabled:       true,
 		HTTPSEnabled:     false,
 		HTTPSCertificate: "/etc/ssl/influxdb.pem",
+		DisableRecovery:  false,
 	}
 }

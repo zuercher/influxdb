@@ -54,6 +54,12 @@ reporting-disabled = false
 [data]
   dir = "/var/lib/influxdb/data"
 
+  # disable-recovery will disable panic recovery. This is useful if you
+  # see messages in the log like [panic:runtime error: ... ]. If you set this
+  # to true, the next time this error is hit the server will exit with a full
+  # stack trace, making it easier to debug.
+  disable-recovery = false
+
   # Controls the storage engine used for new shards. Engines available are b1,
   # bz1, and tsm1. b1 was the original default engine from 0.9.0 to 0.9.2. bz1
   # has been the default engine since 0.9.3. tsm1 was introduced in 0.9.5 and is
