@@ -110,6 +110,11 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 		dir = c.Meta.Dir
 	}
 
+	// Create the root directory if it doesn't already exist.
+	if err := os.MkdirAll(dir, 0777); err != nil {
+		return nil, fmt.Errorf("mkdir all: %s", err)
+	}
+
 	// load the node information
 	node, err := influxdb.NewNode(dir)
 	if err != nil {
@@ -609,6 +614,8 @@ func (s *Server) initializeDataNode() error {
 
 		go s.updateMetaNodeInformation()
 
+		s.MetaClient.WaitForDataChanged()
+
 		return nil
 	}
 
@@ -627,11 +634,17 @@ func (s *Server) initializeDataNode() error {
 	if err := s.MetaClient.Open(); err != nil {
 		return err
 	}
-	n, err := s.MetaClient.CreateDataNode(s.httpAPIAddr, s.tcpAddr)
-	if err != nil {
-		return err
+	for {
+		n, err := s.MetaClient.CreateDataNode(s.httpAPIAddr, s.tcpAddr)
+		if err != nil {
+			println("Unable to create data node. retry...", err.Error())
+			time.Sleep(time.Second)
+			continue
+		}
+		s.Node.ID = n.ID
+
+		break
 	}
-	s.Node.ID = n.ID
 	metaNodes, err := s.MetaClient.MetaNodes()
 	if err != nil {
 		return err
