@@ -79,21 +79,34 @@ type BasicPointGenerator struct {
 	Fields      AbstractFields `toml:"field"`
 	StartDate   string         `toml:"start_date"`
 	Precision   string         `toml:"precision"`
+	t 			float64
 	time        time.Time
 	mu          sync.Mutex
 }
+
+func saw(t float64, numberIterations int) float64 {
+	x := 0.0
+
+	for i := 1.0; i < float64(numberIterations); i++ {
+		x += math.Pow(-1, i) * (math.Sin(2*math.Pi*i*2*t) / i)
+	}
+
+	return x + 1.5
+
+}
+
 
 // typeArr accepts a string array of types and
 // returns an array of equal length where each
 // element of the array is an instance of the type
 // expressed in the string array.
-func typeArr(a []string) []interface{} {
+func typeArr(a []string, t float64) []interface{} {
 	i := make([]interface{}, len(a))
 	for j, ty := range a {
 		var t string
 		switch ty {
 		case "float64":
-			t = fmt.Sprintf("%v", rand.Intn(1000))
+			t = fmt.Sprintf("%v", saw(t, 100))
 		case "int":
 			t = fmt.Sprintf("%vi", rand.Intn(1000))
 		case "bool":
@@ -129,7 +142,8 @@ func (b *BasicPointGenerator) Template() func(i int, t time.Time) *Pnt {
 	return func(i int, t time.Time) *Pnt {
 		p := &Pnt{}
 		arr := []interface{}{i}
-		arr = append(arr, typeArr(fa)...)
+		b.t += 0.1
+		arr = append(arr, typeArr(fa, b.t)...)
 		arr = append(arr, b.timestamp(t))
 
 		str := fmt.Sprintf(tmplt, arr...)
