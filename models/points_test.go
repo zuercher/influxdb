@@ -586,7 +586,7 @@ func TestParsePointScientificIntInvalid(t *testing.T) {
 	}
 }
 
-func TestParsePointUnescape(t *testing.T) {
+func TestParsePointUnescapeMeasurement(t *testing.T) {
 	// commas in measurement name
 	test(t, `foo\,bar value=1i`,
 		NewTestPoint(
@@ -621,7 +621,7 @@ func TestParsePointUnescape(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// equals in measurement name
+	// literal backslash and equals in measurement name
 	test(t, `cpu\=load,region=east value=1.0`,
 		NewTestPoint(
 			`cpu\=load`, // backslash is literal
@@ -644,7 +644,9 @@ func TestParsePointUnescape(t *testing.T) {
 				"value": 1.0,
 			},
 			time.Unix(0, 0)))
+}
 
+func TestParsePointUnescapeTags(t *testing.T) {
 	// commas in tag names
 	test(t, `cpu,region\,zone=east value=1.0`,
 		NewTestPoint("cpu",
@@ -700,6 +702,18 @@ func TestParsePointUnescape(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
+	// random character escaped
+	test(t, `cpu,regions=eas\t value=1.0`,
+		NewTestPoint(
+			"cpu",
+			models.Tags{
+				"regions": "eas\\t",
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
 	// backslash literal followed by escaped space
 	test(t, `cpu,regions=\\ east value=1.0`,
 		NewTestPoint(
@@ -718,6 +732,18 @@ func TestParsePointUnescape(t *testing.T) {
 			"cpu",
 			models.Tags{
 				"regions": `eas\ t`,
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
+	// backslash literal followed by escaped characters
+	test(t, `cpu,regions=\\,\,\=east value=1.0`,
+		NewTestPoint(
+			"cpu",
+			models.Tags{
+				"regions": `\,,=east`,
 			},
 			models.Fields{
 				"value": 1.0,
@@ -747,6 +773,20 @@ func TestParsePointUnescape(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
+	// measurement, tag and tag value with equals
+	test(t, `cpu=load,equals\=foo=tag\=value value=1i`,
+		NewTestPoint(
+			"cpu=load", // Not escaped
+			models.Tags{
+				"equals=foo": "tag=value", // Tag and value unescaped
+			},
+			models.Fields{
+				"value": int64(1),
+			},
+			time.Unix(0, 0)))
+}
+
+func TestParsePointUnescapeFields(t *testing.T) {
 	// commas in field keys
 	test(t, `cpu,regions=east value\,ms=1.0`,
 		NewTestPoint("cpu",
@@ -769,18 +809,6 @@ func TestParsePointUnescape(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// tag with no value
-	test(t, `cpu,regions=east value="1"`,
-		NewTestPoint("cpu",
-			models.Tags{
-				"regions": "east",
-				"foobar":  "",
-			},
-			models.Fields{
-				"value": "1",
-			},
-			time.Unix(0, 0)))
-
 	// commas in field values
 	test(t, `cpu,regions=east value="1,0"`,
 		NewTestPoint("cpu",
@@ -789,30 +817,6 @@ func TestParsePointUnescape(t *testing.T) {
 			},
 			models.Fields{
 				"value": "1,0", // comma in the field value
-			},
-			time.Unix(0, 0)))
-
-	// random character escaped
-	test(t, `cpu,regions=eas\t value=1.0`,
-		NewTestPoint(
-			"cpu",
-			models.Tags{
-				"regions": "eas\\t",
-			},
-			models.Fields{
-				"value": 1.0,
-			},
-			time.Unix(0, 0)))
-
-	// backslash literal followed by escaped characters
-	test(t, `cpu,regions=\\,\,\=east value=1.0`,
-		NewTestPoint(
-			"cpu",
-			models.Tags{
-				"regions": `\,,=east`,
-			},
-			models.Fields{
-				"value": 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -825,19 +829,28 @@ func TestParsePointUnescape(t *testing.T) {
 				"\\a": int64(1), // Left as parsed since it's not a known escape sequence.
 			},
 			time.Unix(0, 0)))
+}
 
-	// measurement, tag and tag value with equals
-	test(t, `cpu=load,equals\=foo=tag\=value value=1i`,
-		NewTestPoint(
-			"cpu=load", // Not escaped
-			models.Tags{
-				"equals=foo": "tag=value", // Tag and value unescaped
-			},
-			models.Fields{
-				"value": int64(1),
-			},
-			time.Unix(0, 0)))
+func TestTagsNoValue(t *testing.T) {
+	// tag with no value is thrown away
+	pt := models.MustNewPoint("cpu",
+		models.Tags{
+			"regions": "east",
+			"foobar":  "",
+		},
+		models.Fields{
+			"value": "1",
+		},
+		time.Unix(0, 0))
+	tags := pt.Tags()
 
+	if len(tags) != 1 {
+		t.Errorf("got %d tags, exp %d", len(tags), 1)
+	}
+
+	if tags["regions"] != "east" {
+		t.Errorf("got %v for tag key, exp %v", tags["region"], "east")
+	}
 }
 
 func TestParsePointWithTags(t *testing.T) {
