@@ -21,12 +21,6 @@ var (
 		' ': []byte(`\ `),
 	}
 
-	tagEscapeCodes = map[byte][]byte{
-		',': []byte(`\,`),
-		' ': []byte(`\ `),
-		'=': []byte(`\=`),
-	}
-
 	ErrPointMustHaveAField = errors.New("point without fields is unsupported")
 	ErrInvalidNumber       = errors.New("invalid number")
 )
@@ -435,23 +429,41 @@ func scanTagsKey(buf []byte, i int) (int, error) {
 		return i, fmt.Errorf("missing tag key")
 	}
 
+	var escaped bool
+	if buf[i] == '\\' {
+		escaped = true
+	}
+
 	// Examine each character in the tag key until we hit an unescaped
 	// equals (the tag value), or we hit an error (i.e., unescaped
 	// space or comma).
 	for {
 		i++
 
-		// Either we reached the end of the buffer or we hit an
-		// unescaped comma or space.
-		if i >= len(buf) ||
-			((buf[i] == ' ' || buf[i] == ',') && buf[i-1] != '\\') {
-			// cpu,tag{'', ' ', ','}
+		// End of buffer
+		if i >= len(buf) {
 			return i, fmt.Errorf("missing tag value")
 		}
 
-		if buf[i] == '=' && buf[i-1] != '\\' {
+		if buf[i] == '\\' && !escaped {
+			escaped = true
+			continue
+		}
+
+		// Have we hit an unescaped comma or space?
+		if (buf[i] == ' ' || buf[i] == ',') && !escaped {
+			// cpu,tag{' ', ','}
+			return i, fmt.Errorf("missing tag value")
+		}
+
+		// Found the tag value.
+		if buf[i] == '=' && !escaped {
 			// cpu,tag=
 			return i + 1, nil
+		}
+
+		if escaped {
+			escaped = false
 		}
 	}
 }
@@ -464,31 +476,48 @@ func scanTagsValue(buf []byte, i int) (int, int, error) {
 		return -1, i, fmt.Errorf("missing tag value")
 	}
 
+	var escaped bool
+	if buf[i] == '\\' {
+		escaped = true
+	}
+
 	// Examine each character in the tag value until we hit an unescaped
 	// comma (move onto next tag key), an unescaped space (move onto
 	// fields), or we error out.
 	for {
 		i++
+
+		// Hit end of buffer.
 		if i >= len(buf) {
 			// cpu,tag=value
 			return -1, i, fmt.Errorf("missing fields")
 		}
 
+		if buf[i] == '\\' && !escaped {
+			escaped = true
+			continue
+		}
+
 		// An unescaped equals sign is an invalid tag value.
-		if buf[i] == '=' && buf[i-1] != '\\' {
+		if buf[i] == '=' && !escaped {
 			// cpu,tag={'=', 'fo=o'}
 			return -1, i, fmt.Errorf("invalid tag format")
 		}
 
-		if buf[i] == ',' && buf[i-1] != '\\' {
+		// Move onto next tag.
+		if buf[i] == ',' && !escaped {
 			// cpu,tag=foo,
 			return tagKeyState, i + 1, nil
 		}
 
 		// cpu,tag=foo value=1.0
 		// cpu, tag=foo\= value=1.0
-		if buf[i] == ' ' && buf[i-1] != '\\' {
+		if buf[i] == ' ' && !escaped {
 			return fieldsState, i, nil
+		}
+
+		if escaped {
+			escaped = false
 		}
 	}
 }
@@ -1003,21 +1032,43 @@ func unescapeMeasurement(in []byte) []byte {
 }
 
 func escapeTag(in []byte) []byte {
-	for b, esc := range tagEscapeCodes {
-		if bytes.Contains(in, []byte{b}) {
-			in = bytes.Replace(in, []byte{b}, esc, -1)
-		}
+	if bytes.IndexAny(in, `\,= `) == -1 {
+		return in
 	}
-	return in
+
+	var out []byte
+	for i := 0; i < len(in); i++ {
+		if in[i] == '\\' || in[i] == ',' || in[i] == '=' || in[i] == ' ' {
+			out = append(out, '\\')
+		}
+		out = append(out, in[i])
+	}
+	return out
 }
 
 func unescapeTag(in []byte) []byte {
-	for b, esc := range tagEscapeCodes {
-		if bytes.Contains(in, []byte{b}) {
-			in = bytes.Replace(in, esc, []byte{b}, -1)
+	// out := in[:0] // re-use backing array of in
+	var (
+		out     []byte
+		escaped bool
+	)
+
+	for i := 0; i < len(in); i++ {
+		if i == len(in)-1 {
+			out = append(out, in[i]) // last byte
+			return out
 		}
+
+		if !escaped && in[i] == '\\' && (in[i+1] == '\\' || in[i+1] == ',' || in[i+1] == '=' || in[i+1] == ' ') {
+			// don't append the backslash and turn on escaping.
+			escaped = true
+			continue
+		}
+
+		out = append(out, in[i])
+		escaped = false
 	}
-	return in
+	return out
 }
 
 // escapeStringField returns a copy of in with any double quotes or

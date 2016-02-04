@@ -112,6 +112,15 @@ func BenchmarkParsePointsTagsUnSorted10(b *testing.B) {
 	}
 }
 
+func BenchmarkParsePointsTagsEscape(b *testing.B) {
+	line := `cp\,u,region=us-west,ho\ st=serverA,env=prod,targe\\t=servers,zone=1c\\\=,tag1=value1,tag2=value2,tag3=value3,tag4=value4,ta\\\\g5=value5 value=1i 1000000000`
+	for i := 0; i < b.N; i++ {
+		pt, _ := models.ParsePoints([]byte(line))
+		b.SetBytes(int64(len(line)))
+		pt[0].Key()
+	}
+}
+
 // TestPoint wraps a models.Point but also makes available the raw
 // arguments to the Point.
 //
@@ -725,7 +734,7 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal in tag value
+	// escaped backslash literal in tag value
 	test(t, `cpu,regions=eas\\t value=1.0`,
 		NewTestPoint(
 			"cpu",
@@ -737,7 +746,7 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal in tag name
+	// escaped backslash in tag name
 	test(t, `cpu,regio\\ns=east value=1.0`,
 		NewTestPoint(
 			"cpu",
