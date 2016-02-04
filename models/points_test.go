@@ -669,8 +669,19 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
+	// equals in tag name
+	test(t, `cpu,reg\=ion=east value=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"reg=ion": "east",
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
 	// backslash with escaped equals in tag name
-	test(t, `cpu,reg\\=ion=east value=1.0`,
+	test(t, `cpu,reg\\\=ion=east value=1.0`,
 		NewTestPoint("cpu",
 			models.Tags{
 				`reg\=ion`: "east",
@@ -702,20 +713,56 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// random character escaped
+	// backslash literal in tag value
 	test(t, `cpu,regions=eas\t value=1.0`,
 		NewTestPoint(
 			"cpu",
 			models.Tags{
-				"regions": "eas\\t",
+				"regions": `eas\t`,
 			},
 			models.Fields{
 				"value": 1.0,
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal followed by escaped space
-	test(t, `cpu,regions=\\ east value=1.0`,
+	// backslash literal in tag value
+	test(t, `cpu,regions=eas\\t value=1.0`,
+		NewTestPoint(
+			"cpu",
+			models.Tags{
+				"regions": `eas\t`,
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
+	// backslash literal in tag name
+	test(t, `cpu,regio\\ns=east value=1.0`,
+		NewTestPoint(
+			"cpu",
+			models.Tags{
+				`regio\ns`: "east",
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
+	// backslash literal in tag name
+	test(t, `cpu,regio\ns=east value=1.0`,
+		NewTestPoint(
+			"cpu",
+			models.Tags{
+				`regio\ns`: "east",
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
+	// backslash literal followed by escaped space in value
+	test(t, `cpu,regions=\\\ east value=1.0`,
 		NewTestPoint(
 			"cpu",
 			models.Tags{
@@ -726,8 +773,8 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal followed by escaped space
-	test(t, `cpu,regions=eas\\ t value=1.0`,
+	// backslash literal followed by escaped space in value
+	test(t, `cpu,regions=eas\\\ t value=1.0`,
 		NewTestPoint(
 			"cpu",
 			models.Tags{
@@ -738,8 +785,8 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal followed by escaped characters
-	test(t, `cpu,regions=\\,\,\=east value=1.0`,
+	// backslash literal followed by escaped characters in value
+	test(t, `cpu,regions=\\\,\,\=east value=1.0`,
 		NewTestPoint(
 			"cpu",
 			models.Tags{
@@ -750,12 +797,24 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal followed by trailing space
-	test(t, `cpu,regions=east\\  value=1.0`,
+	// backslash literal followed by trailing space in value
+	test(t, `cpu,regions=east\\\  value=1.0`,
 		NewTestPoint(
 			"cpu",
 			models.Tags{
 				"regions": `east\ `,
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
+	// backslash literal at end of tag value
+	test(t, `cpu,regions=east\\ value=1.0`,
+		NewTestPoint(
+			"cpu",
+			models.Tags{
+				"regions": `east\`,
 			},
 			models.Fields{
 				"value": 1.0,
