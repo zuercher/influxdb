@@ -20,6 +20,10 @@ func Unescape(in []byte) []byte {
 		}
 		if in[i] == '\\' && i+1 < inLen {
 			switch in[i+1] {
+			case '\\':
+				out = append(out, '\\')
+				i += 2
+				continue
 			case ',':
 				out = append(out, ',')
 				i += 2

@@ -171,17 +171,21 @@ func test(t *testing.T, line string, point TestPoint) {
 		}
 	}
 
-	for name, value := range point.RawFields {
-		val := pts[0].Fields()[name]
-		expfval, ok := val.(float64)
+	// fmt.Printf("%#v\n", pts[0].Fields())
+	// fmt.Printf("%#v\n", point.Point.Fields())
+	// fmt.Printf("%#v\n\n\n", point.RawFields)
+
+	for name, exp := range point.RawFields {
+		got := pts[0].Fields()[name]
+		expfval, ok := got.(float64)
 
 		if ok && math.IsNaN(expfval) {
-			gotfval, ok := value.(float64)
+			gotfval, ok := exp.(float64)
 			if ok && !math.IsNaN(gotfval) {
 				t.Errorf(`ParsePoints("%s") field '%s' mismatch. exp NaN`, line, name)
 			}
-		} else if !reflect.DeepEqual(pts[0].Fields()[name], value) {
-			t.Errorf(`ParsePoints("%s") field '%s' mismatch. got %[3]v (%[3]T), exp %[4]v (%[4]T)`, line, name, pts[0].Fields()[name], value)
+		} else if !reflect.DeepEqual(got, exp) {
+			t.Errorf(`ParsePoints("%s") field '%s' mismatch. got %[3]v (%[3]T), exp %[4]v (%[4]T)`, line, name, got, exp)
 		}
 	}
 
@@ -234,14 +238,9 @@ func TestParsePointNoFields(t *testing.T) {
 	}
 }
 
-func TestParsePointNoTimestamp(t *testing.T) {
-	test(t, "cpu value=1", NewTestPoint("cpu", nil, models.Fields{"value": 1.0}, time.Unix(0, 0)))
-}
-
-func TestParsePointMissingQuote(t *testing.T) {
-	expectedSuffix := "unbalanced quotes"
+func TestParsePointInvalidFields(t *testing.T) {
+	expectedSuffix := "invalid field format"
 	examples := []string{
-		`cpu,host=serverA value="test`,
 		`cpu,host=serverA value="test""`,
 	}
 
@@ -252,6 +251,21 @@ func TestParsePointMissingQuote(t *testing.T) {
 		} else if !strings.HasSuffix(err.Error(), expectedSuffix) {
 			t.Errorf(`[Example %d] ParsePoints("%s") mismatch. got %q, exp suffix %q`, i, example, err, expectedSuffix)
 		}
+	}
+}
+
+func TestParsePointNoTimestamp(t *testing.T) {
+	test(t, "cpu value=1", NewTestPoint("cpu", nil, models.Fields{"value": 1.0}, time.Unix(0, 0)))
+}
+
+func TestParsePointMissingQuote(t *testing.T) {
+	expectedSuffix := "unbalanced quotes"
+	example := `cpu,host=serverA value="test`
+	_, err := models.ParsePointsString(`cpu,host=serverA value="test`)
+	if err == nil {
+		t.Errorf(`ParsePoints("%s") mismatch. got nil, exp error`, example)
+	} else if !strings.HasSuffix(err.Error(), expectedSuffix) {
+		t.Errorf(`ParsePoints("%s") mismatch. got %q, exp suffix %q`, example, err, expectedSuffix)
 	}
 }
 
@@ -871,14 +885,14 @@ func TestParsePointUnescapeTags(t *testing.T) {
 }
 
 func TestParsePointUnescapeFieldKeys(t *testing.T) {
-	// backslash in field keys
+	// backslash in field key
 	test(t, `cpu,regions=east value\\ms=1.0`,
 		NewTestPoint("cpu",
 			models.Tags{
 				"regions": "east",
 			},
 			models.Fields{
-				`value\ms`: 1.0, // comma in the field keys
+				`value\ms`: 1.0, // backslash in the field key
 			},
 			time.Unix(0, 0)))
 
@@ -889,18 +903,18 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				`value\`: 1.0, // comma in the field keys
+				`value\`: 1.0,
 			},
 			time.Unix(0, 0)))
 
-	// backslashes in field key
+	// multiple backslashes in field key
 	test(t, `cpu,regions=east value\\\\ms=1.0`,
 		NewTestPoint("cpu",
 			models.Tags{
 				"regions": "east",
 			},
 			models.Fields{
-				`value\ms`: 1.0, // comma in the field keys
+				`value\\ms`: 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -911,7 +925,7 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				"value ms": 1.0, // comma in the field keys
+				"value ms": 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -922,7 +936,7 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				`value\ ms`: 1.0, // comma in the field keys
+				`value\ ms`: 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -933,7 +947,7 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				"value,ms": 1.0, // comma in the field keys
+				"value,ms": 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -944,7 +958,7 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				`value\,ms`: 1.0, // comma in the field keys
+				`value\,ms`: 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -955,7 +969,7 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				"value=ms": 1.0, // comma in the field keys
+				"value=ms": 1.0,
 			},
 			time.Unix(0, 0)))
 
@@ -966,7 +980,7 @@ func TestParsePointUnescapeFieldKeys(t *testing.T) {
 				"regions": "east",
 			},
 			models.Fields{
-				`value\=ms`: 1.0, // comma in the field keys
+				`value\=ms`: 1.0,
 			},
 			time.Unix(0, 0)))
 }
