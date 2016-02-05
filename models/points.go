@@ -16,11 +16,6 @@ import (
 )
 
 var (
-	measurementEscapeCodes = map[byte][]byte{
-		',': []byte(`\,`),
-		' ': []byte(`\ `),
-	}
-
 	ErrPointMustHaveAField = errors.New("point without fields is unsupported")
 	ErrInvalidNumber       = errors.New("invalid number")
 )
@@ -355,31 +350,45 @@ func scanMeasurement(buf []byte, i int) (int, int, error) {
 	// Check first byte of measurement, anything except a comma is fine.
 	// It can't be a space, since whitespace is stripped prior to this
 	// function call.
+	var escaped bool
 	if buf[i] == ',' {
 		return -1, i, fmt.Errorf("missing measurement")
+	} else if buf[i] == '\\' {
+		escaped = true
 	}
 
 	for {
 		i++
+
 		if i >= len(buf) {
 			// cpu
 			return -1, i, fmt.Errorf("missing fields")
 		}
 
-		if buf[i-1] == '\\' {
+		if buf[i] == '\\' && !escaped {
 			// Skip character (it's escaped).
+			escaped = true
 			continue
 		}
 
-		// Unescaped comma; move onto scanning the tags.
-		if buf[i] == ',' {
+		// Hit an unescaped comma; move onto scanning the tags.
+		if buf[i] == ',' && !escaped {
 			return tagKeyState, i + 1, nil
 		}
 
-		// Unescaped space; move onto scanning the fields.
-		if buf[i] == ' ' {
+		// Hit an unescaped space; move onto scanning the fields.
+		if buf[i] == ' ' && !escaped {
 			// cpu value=1.0
 			return fieldsState, i, nil
+		}
+
+		// Backslashes must escape valid characters.
+		if escaped && buf[i] != '\\' && buf[i] != ',' && buf[i] != ' ' {
+			return -1, i, fmt.Errorf("invalid escape sequence")
+		}
+
+		if escaped {
+			escaped = false
 		}
 	}
 }
@@ -1018,27 +1027,13 @@ func scanFieldValue(buf []byte, i int) (int, []byte) {
 }
 
 func escapeMeasurement(in []byte) []byte {
-	for b, esc := range measurementEscapeCodes {
-		in = bytes.Replace(in, []byte{b}, esc, -1)
-	}
-	return in
-}
-
-func unescapeMeasurement(in []byte) []byte {
-	for b, esc := range measurementEscapeCodes {
-		in = bytes.Replace(in, esc, []byte{b}, -1)
-	}
-	return in
-}
-
-func escapeTag(in []byte) []byte {
-	if bytes.IndexAny(in, `\,= `) == -1 {
+	if bytes.IndexAny(in, `\, `) == -1 {
 		return in
 	}
 
 	var out []byte
 	for i := 0; i < len(in); i++ {
-		if in[i] == '\\' || in[i] == ',' || in[i] == '=' || in[i] == ' ' {
+		if in[i] == '\\' || in[i] == ',' || in[i] == ' ' {
 			out = append(out, '\\')
 		}
 		out = append(out, in[i])
@@ -1046,8 +1041,7 @@ func escapeTag(in []byte) []byte {
 	return out
 }
 
-func unescapeTag(in []byte) []byte {
-	// out := in[:0] // re-use backing array of in
+func unescapeMeasurement(in []byte) []byte {
 	var (
 		out     []byte
 		escaped bool
@@ -1059,7 +1053,46 @@ func unescapeTag(in []byte) []byte {
 			return out
 		}
 
-		if !escaped && in[i] == '\\' && (in[i+1] == '\\' || in[i+1] == ',' || in[i+1] == '=' || in[i+1] == ' ') {
+		if !escaped && in[i] == '\\' && (in[i+1] == '\\' || in[i+1] == ',' || in[i+1] == ' ') {
+			// don't append the backslash and turn on escaping.
+			escaped = true
+			continue
+		}
+
+		out = append(out, in[i])
+		escaped = false
+	}
+	return out
+}
+
+func escapeTag(in []byte) []byte {
+	if bytes.IndexAny(in, `\, =`) == -1 {
+		return in
+	}
+
+	var out []byte
+	for i := 0; i < len(in); i++ {
+		if in[i] == '\\' || in[i] == ',' || in[i] == ' ' || in[i] == '=' {
+			out = append(out, '\\')
+		}
+		out = append(out, in[i])
+	}
+	return out
+}
+
+func unescapeTag(in []byte) []byte {
+	var (
+		out     []byte
+		escaped bool
+	)
+
+	for i := 0; i < len(in); i++ {
+		if i == len(in)-1 {
+			out = append(out, in[i]) // last byte
+			return out
+		}
+
+		if !escaped && in[i] == '\\' && (in[i+1] == '\\' || in[i+1] == ',' || in[i+1] == ' ') || in[i+1] == '=' {
 			// don't append the backslash and turn on escaping.
 			escaped = true
 			continue
@@ -1263,9 +1296,7 @@ func parseTags(buf []byte) Tags {
 
 // MakeKey creates a key for a set of tags.
 func MakeKey(name []byte, tags Tags) []byte {
-	// unescape the name and then re-escape it to avoid double escaping.
-	// The key should always be stored in escaped form.
-	return append(escapeMeasurement(unescapeMeasurement(name)), tags.HashKey()...)
+	return append(escapeMeasurement(name), tags.HashKey()...)
 }
 
 // SetTags replaces the tags for the point

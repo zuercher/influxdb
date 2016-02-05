@@ -158,7 +158,7 @@ func test(t *testing.T, line string, point TestPoint) {
 	}
 
 	if exp := point.Key(); !bytes.Equal(pts[0].Key(), exp) {
-		t.Errorf("ParsePoints(\"%s\") key mismatch.\ngot %v\nexp %v", line, string(pts[0].Key()), string(exp))
+		t.Errorf("ParsePoints(\"%s\") key mismatch.\ngot %s\nexp %s", line, pts[0].Key(), exp)
 	}
 
 	if exp := len(point.Tags()); len(pts[0].Tags()) != exp {
@@ -595,11 +595,40 @@ func TestParsePointScientificIntInvalid(t *testing.T) {
 	}
 }
 
+func TestParsePointBackslashInvalid(t *testing.T) {
+	expectedSuffix := "invalid escape sequence"
+	examples := []string{
+		`cp\u value=1.0`,
+		`cpu,hos\t=serverA value=1.0`,
+		`cpu,host=s\erverA value=1.0`,
+		`cpu,host=serverA val\ue=1.0`,
+	}
+
+	for i, example := range examples {
+		_, err := models.ParsePointsString(example)
+		if err == nil {
+			t.Errorf(`[Example %d] ParsePoints("%s") mismatch. got nil, exp error`, i, example)
+		} else if !strings.HasSuffix(err.Error(), expectedSuffix) {
+			t.Errorf(`[Example %d] ParsePoints("%s") mismatch. got %q, exp suffix %q`, i, example, err, expectedSuffix)
+		}
+	}
+}
+
 func TestParsePointUnescapeMeasurement(t *testing.T) {
 	// commas in measurement name
 	test(t, `foo\,bar value=1i`,
 		NewTestPoint(
 			"foo,bar", // comma in the name
+			models.Tags{},
+			models.Fields{
+				"value": int64(1),
+			},
+			time.Unix(0, 0)))
+
+	// backslash and comma in measurement name
+	test(t, `foo\\\,bars value=1i`,
+		NewTestPoint(
+			`foo\,bars`, // comma in the name
 			models.Tags{},
 			models.Fields{
 				"value": int64(1),
@@ -621,7 +650,7 @@ func TestParsePointUnescapeMeasurement(t *testing.T) {
 	// spaces in measurement name
 	test(t, `cpu\ load,region=east value=1.0`,
 		NewTestPoint(
-			"cpu load", // space in the name
+			`cpu load`, // space in the name
 			models.Tags{
 				"region": "east",
 			},
@@ -630,10 +659,10 @@ func TestParsePointUnescapeMeasurement(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// literal backslash and equals in measurement name
-	test(t, `cpu\=load,region=east value=1.0`,
+	// backslash and space in measurement name
+	test(t, `cpu\\\ load,region=east value=1.0`,
 		NewTestPoint(
-			`cpu\=load`, // backslash is literal
+			`cpu\ load`, // space in the name
 			models.Tags{
 				"region": "east",
 			},
@@ -646,6 +675,18 @@ func TestParsePointUnescapeMeasurement(t *testing.T) {
 	test(t, `cpu=load,region=east value=1.0`,
 		NewTestPoint(
 			`cpu=load`, // literal equals is fine in measurement name
+			models.Tags{
+				"region": "east",
+			},
+			models.Fields{
+				"value": 1.0,
+			},
+			time.Unix(0, 0)))
+
+	// backslash and equals in measurement name
+	test(t, `cpu\\=load,region=east value=1.0`,
+		NewTestPoint(
+			`cpu\=load`, // backslash is literal
 			models.Tags{
 				"region": "east",
 			},
@@ -722,18 +763,6 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// backslash literal in tag value
-	test(t, `cpu,regions=eas\t value=1.0`,
-		NewTestPoint(
-			"cpu",
-			models.Tags{
-				"regions": `eas\t`,
-			},
-			models.Fields{
-				"value": 1.0,
-			},
-			time.Unix(0, 0)))
-
 	// escaped backslash literal in tag value
 	test(t, `cpu,regions=eas\\t value=1.0`,
 		NewTestPoint(
@@ -748,18 +777,6 @@ func TestParsePointUnescapeTags(t *testing.T) {
 
 	// escaped backslash in tag name
 	test(t, `cpu,regio\\ns=east value=1.0`,
-		NewTestPoint(
-			"cpu",
-			models.Tags{
-				`regio\ns`: "east",
-			},
-			models.Fields{
-				"value": 1.0,
-			},
-			time.Unix(0, 0)))
-
-	// backslash literal in tag name
-	test(t, `cpu,regio\ns=east value=1.0`,
 		NewTestPoint(
 			"cpu",
 			models.Tags{
@@ -854,19 +871,41 @@ func TestParsePointUnescapeTags(t *testing.T) {
 			time.Unix(0, 0)))
 }
 
-func TestParsePointUnescapeFields(t *testing.T) {
-	// commas in field keys
-	test(t, `cpu,regions=east value\,ms=1.0`,
+func TestParsePointUnescapeFieldKeys(t *testing.T) {
+	// backslash in field keys
+	test(t, `cpu,regions=east value\\ms=1.0`,
 		NewTestPoint("cpu",
 			models.Tags{
 				"regions": "east",
 			},
 			models.Fields{
-				"value,ms": 1.0, // comma in the field keys
+				`value\ms`: 1.0, // comma in the field keys
 			},
 			time.Unix(0, 0)))
 
-	// spaces in field keys
+	// backslash at end of field key
+	test(t, `cpu,regions=east value\\=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"regions": "east",
+			},
+			models.Fields{
+				`value\`: 1.0, // comma in the field keys
+			},
+			time.Unix(0, 0)))
+
+	// backslashes in field key
+	test(t, `cpu,regions=east value\\\\ms=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"regions": "east",
+			},
+			models.Fields{
+				`value\ms`: 1.0, // comma in the field keys
+			},
+			time.Unix(0, 0)))
+
+	// space in field key
 	test(t, `cpu,regions=east value\ ms=1.0`,
 		NewTestPoint("cpu",
 			models.Tags{
@@ -877,24 +916,58 @@ func TestParsePointUnescapeFields(t *testing.T) {
 			},
 			time.Unix(0, 0)))
 
-	// commas in field values
-	test(t, `cpu,regions=east value="1,0"`,
+	// space and backslash in field key
+	test(t, `cpu,regions=east value\\\ ms=1.0`,
 		NewTestPoint("cpu",
 			models.Tags{
 				"regions": "east",
 			},
 			models.Fields{
-				"value": "1,0", // comma in the field value
+				`value\ ms`: 1.0, // comma in the field keys
 			},
 			time.Unix(0, 0)))
 
-	// field keys using escape char.
-	test(t, `cpu \a=1i`,
-		NewTestPoint(
-			"cpu",
-			models.Tags{},
+	// comma in field key
+	test(t, `cpu,regions=east value\,ms=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"regions": "east",
+			},
 			models.Fields{
-				"\\a": int64(1), // Left as parsed since it's not a known escape sequence.
+				"value,ms": 1.0, // comma in the field keys
+			},
+			time.Unix(0, 0)))
+
+	// comma and backslash in field key
+	test(t, `cpu,regions=east value\\\,ms=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"regions": "east",
+			},
+			models.Fields{
+				`value\,ms`: 1.0, // comma in the field keys
+			},
+			time.Unix(0, 0)))
+
+	// equals in field key
+	test(t, `cpu,regions=east value\=ms=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"regions": "east",
+			},
+			models.Fields{
+				"value=ms": 1.0, // comma in the field keys
+			},
+			time.Unix(0, 0)))
+
+	// equals and backslash in field key
+	test(t, `cpu,regions=east value\\\=ms=1.0`,
+		NewTestPoint("cpu",
+			models.Tags{
+				"regions": "east",
+			},
+			models.Fields{
+				`value\=ms`: 1.0, // comma in the field keys
 			},
 			time.Unix(0, 0)))
 }
@@ -1668,20 +1741,20 @@ func TestNewPointUnhandledType(t *testing.T) {
 }
 
 func TestMakeKeyEscaped(t *testing.T) {
-	if exp, got := `cpu\ load`, models.MakeKey([]byte(`cpu\ load`), models.Tags{}); string(got) != exp {
-		t.Errorf("MakeKey() mismatch.\ngot %v\nexp %v", got, exp)
+	if exp, got := `cpu\\\ load`, models.MakeKey([]byte(`cpu\ load`), models.Tags{}); string(got) != exp {
+		t.Errorf("MakeKey() mismatch.\ngot %s\nexp %s", got, exp)
 	}
 
 	if exp, got := `cpu\ load`, models.MakeKey([]byte(`cpu load`), models.Tags{}); string(got) != exp {
-		t.Errorf("MakeKey() mismatch.\ngot %v\nexp %v", got, exp)
+		t.Errorf("MakeKey() mismatch.\ngot %s\nexp %s", got, exp)
 	}
 
-	if exp, got := `cpu\,load`, models.MakeKey([]byte(`cpu\,load`), models.Tags{}); string(got) != exp {
-		t.Errorf("MakeKey() mismatch.\ngot %v\nexp %v", got, exp)
+	if exp, got := `cpu\\\,load`, models.MakeKey([]byte(`cpu\,load`), models.Tags{}); string(got) != exp {
+		t.Errorf("MakeKey() mismatch.\ngot %s\nexp %s", got, exp)
 	}
 
 	if exp, got := `cpu\,load`, models.MakeKey([]byte(`cpu,load`), models.Tags{}); string(got) != exp {
-		t.Errorf("MakeKey() mismatch.\ngot %v\nexp %v", got, exp)
+		t.Errorf("MakeKey() mismatch.\ngot %s\nexp %s", got, exp)
 	}
 
 }
