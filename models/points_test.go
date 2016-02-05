@@ -221,7 +221,6 @@ func TestParsePointNoFields(t *testing.T) {
 	examples := []string{
 		"cpu_load_short,host=server01,region=us-west",
 		"cpu",
-		"cpu,host==",
 		"=",
 	}
 
