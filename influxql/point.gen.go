@@ -86,17 +86,29 @@ func decodeFloatPoint(pb *internal.Point) *FloatPoint {
 // floatPoints represents a slice of points sortable by value.
 type floatPoints []FloatPoint
 
-func (a floatPoints) Len() int           { return len(a) }
-func (a floatPoints) Less(i, j int) bool { return a[i].Time < a[j].Time }
-func (a floatPoints) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a floatPoints) Len() int { return len(a) }
+func (a floatPoints) Less(i, j int) bool {
+	if a[i].Time == a[j].Time {
+
+		return a[i].Value < a[j].Value
+
+	}
+	return a[i].Time < a[j].Time
+}
+func (a floatPoints) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // floatPointsByValue represents a slice of points sortable by value.
 type floatPointsByValue []FloatPoint
 
 func (a floatPointsByValue) Len() int { return len(a) }
+func (a floatPointsByValue) Less(i, j int) bool {
+	if a[i].Value == a[j].Value {
+		return a[i].Time < a[j].Time
+	}
 
-func (a floatPointsByValue) Less(i, j int) bool { return a[i].Value < a[j].Value }
+	return a[i].Value < a[j].Value
 
+}
 func (a floatPointsByValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // floatPointByFunc represents a slice of points sortable by a function.
@@ -262,17 +274,29 @@ func decodeIntegerPoint(pb *internal.Point) *IntegerPoint {
 // integerPoints represents a slice of points sortable by value.
 type integerPoints []IntegerPoint
 
-func (a integerPoints) Len() int           { return len(a) }
-func (a integerPoints) Less(i, j int) bool { return a[i].Time < a[j].Time }
-func (a integerPoints) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a integerPoints) Len() int { return len(a) }
+func (a integerPoints) Less(i, j int) bool {
+	if a[i].Time == a[j].Time {
+
+		return a[i].Value < a[j].Value
+
+	}
+	return a[i].Time < a[j].Time
+}
+func (a integerPoints) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // integerPointsByValue represents a slice of points sortable by value.
 type integerPointsByValue []IntegerPoint
 
 func (a integerPointsByValue) Len() int { return len(a) }
+func (a integerPointsByValue) Less(i, j int) bool {
+	if a[i].Value == a[j].Value {
+		return a[i].Time < a[j].Time
+	}
 
-func (a integerPointsByValue) Less(i, j int) bool { return a[i].Value < a[j].Value }
+	return a[i].Value < a[j].Value
 
+}
 func (a integerPointsByValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // integerPointByFunc represents a slice of points sortable by a function.
@@ -438,17 +462,29 @@ func decodeStringPoint(pb *internal.Point) *StringPoint {
 // stringPoints represents a slice of points sortable by value.
 type stringPoints []StringPoint
 
-func (a stringPoints) Len() int           { return len(a) }
-func (a stringPoints) Less(i, j int) bool { return a[i].Time < a[j].Time }
-func (a stringPoints) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a stringPoints) Len() int { return len(a) }
+func (a stringPoints) Less(i, j int) bool {
+	if a[i].Time == a[j].Time {
+
+		return a[i].Value < a[j].Value
+
+	}
+	return a[i].Time < a[j].Time
+}
+func (a stringPoints) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // stringPointsByValue represents a slice of points sortable by value.
 type stringPointsByValue []StringPoint
 
 func (a stringPointsByValue) Len() int { return len(a) }
+func (a stringPointsByValue) Less(i, j int) bool {
+	if a[i].Value == a[j].Value {
+		return a[i].Time < a[j].Time
+	}
 
-func (a stringPointsByValue) Less(i, j int) bool { return a[i].Value < a[j].Value }
+	return a[i].Value < a[j].Value
 
+}
 func (a stringPointsByValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // stringPointByFunc represents a slice of points sortable by a function.
@@ -614,17 +650,29 @@ func decodeBooleanPoint(pb *internal.Point) *BooleanPoint {
 // booleanPoints represents a slice of points sortable by value.
 type booleanPoints []BooleanPoint
 
-func (a booleanPoints) Len() int           { return len(a) }
-func (a booleanPoints) Less(i, j int) bool { return a[i].Time < a[j].Time }
-func (a booleanPoints) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a booleanPoints) Len() int { return len(a) }
+func (a booleanPoints) Less(i, j int) bool {
+	if a[i].Time == a[j].Time {
+
+		return !a[i].Value
+
+	}
+	return a[i].Time < a[j].Time
+}
+func (a booleanPoints) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // booleanPointsByValue represents a slice of points sortable by value.
 type booleanPointsByValue []BooleanPoint
 
 func (a booleanPointsByValue) Len() int { return len(a) }
+func (a booleanPointsByValue) Less(i, j int) bool {
+	if a[i].Value == a[j].Value {
+		return a[i].Time < a[j].Time
+	}
 
-func (a booleanPointsByValue) Less(i, j int) bool { return !a[i].Value }
+	return !a[i].Value
 
+}
 func (a booleanPointsByValue) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 // booleanPointByFunc represents a slice of points sortable by a function.

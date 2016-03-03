@@ -658,7 +658,7 @@ func newFloatTopReduceSliceFunc(n int, tags []int, interval Interval) floatReduc
 				points[i].Time = opt.startTime
 			}
 		} else {
-			sort.Stable(floatPoints(points))
+			sort.Sort(floatPointsByValue(points))
 		}
 		return points
 	}
@@ -704,7 +704,7 @@ func newIntegerTopReduceSliceFunc(n int, tags []int, interval Interval) integerR
 				points[i].Time = opt.startTime
 			}
 		} else {
-			sort.Stable(integerPoints(points))
+			sort.Sort(integerPointsByValue(points))
 		}
 		return points
 	}

@@ -91,18 +91,33 @@ func decode{{.Name}}Point(pb *internal.Point) *{{.Name}}Point {
 type {{.name}}Points []{{.Name}}Point
 
 func (a {{.name}}Points) Len() int           { return len(a) }
-func (a {{.name}}Points) Less(i, j int) bool { return a[i].Time < a[j].Time }
+func (a {{.name}}Points) Less(i, j int) bool {
+	if a[i].Time == a[j].Time {
+		{{if eq .Name "Boolean"}}
+		return !a[i].Value
+		{{else}}
+		return a[i].Value < a[j].Value
+		{{end}}
+	}
+	return a[i].Time < a[j].Time 
+}
 func (a {{.name}}Points) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 // {{.name}}PointsByValue represents a slice of points sortable by value.
 type {{.name}}PointsByValue []{{.Name}}Point
 
 func (a {{.name}}PointsByValue) Len() int           { return len(a) }
-{{if eq .Name "Boolean"}}
-func (a {{.name}}PointsByValue) Less(i, j int) bool { return !a[i].Value }
-{{else}}
-func (a {{.name}}PointsByValue) Less(i, j int) bool { return a[i].Value < a[j].Value }
-{{end}}
+func (a {{.name}}PointsByValue) Less(i, j int) bool {
+	if a[i].Value == a[j].Value {
+		return a[i].Time < a[j].Time 
+	}
+
+	{{if eq .Name "Boolean"}}
+	return !a[i].Value
+	{{else}}
+	return a[i].Value < a[j].Value
+	{{end}}
+}
 func (a {{.name}}PointsByValue) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 // {{.name}}PointByFunc represents a slice of points sortable by a function.
