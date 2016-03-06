@@ -184,59 +184,61 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 		s.MetaService.Node = s.Node
 	}
 
-	if c.Data.Enabled {
-		s.TSDBStore = tsdb.NewStore(c.Data.Dir)
-		s.TSDBStore.EngineOptions.Config = c.Data
+	/*
+		if c.Data.Enabled {
+			s.TSDBStore = tsdb.NewStore(c.Data.Dir)
+			s.TSDBStore.EngineOptions.Config = c.Data
 
-		// Copy TSDB configuration.
-		s.TSDBStore.EngineOptions.EngineVersion = c.Data.Engine
-		s.TSDBStore.EngineOptions.MaxWALSize = c.Data.MaxWALSize
-		s.TSDBStore.EngineOptions.WALFlushInterval = time.Duration(c.Data.WALFlushInterval)
-		s.TSDBStore.EngineOptions.WALPartitionFlushDelay = time.Duration(c.Data.WALPartitionFlushDelay)
+			// Copy TSDB configuration.
+			s.TSDBStore.EngineOptions.EngineVersion = c.Data.Engine
+			s.TSDBStore.EngineOptions.MaxWALSize = c.Data.MaxWALSize
+			s.TSDBStore.EngineOptions.WALFlushInterval = time.Duration(c.Data.WALFlushInterval)
+			s.TSDBStore.EngineOptions.WALPartitionFlushDelay = time.Duration(c.Data.WALPartitionFlushDelay)
 
-		// Set the shard writer
-		s.ShardWriter = cluster.NewShardWriter(time.Duration(c.Cluster.ShardWriterTimeout),
-			c.Cluster.MaxRemoteWriteConnections)
+			// Set the shard writer
+			s.ShardWriter = cluster.NewShardWriter(time.Duration(c.Cluster.ShardWriterTimeout),
+				c.Cluster.MaxRemoteWriteConnections)
 
-		// Create the hinted handoff service
-		s.HintedHandoff = hh.NewService(c.HintedHandoff, s.ShardWriter, s.MetaClient)
-		s.HintedHandoff.Monitor = s.Monitor
+			// Create the hinted handoff service
+			s.HintedHandoff = hh.NewService(c.HintedHandoff, s.ShardWriter, s.MetaClient)
+			s.HintedHandoff.Monitor = s.Monitor
 
-		// Create the Subscriber service
-		s.Subscriber = subscriber.NewService(c.Subscriber)
+			// Create the Subscriber service
+			s.Subscriber = subscriber.NewService(c.Subscriber)
 
-		// Initialize points writer.
-		s.PointsWriter = cluster.NewPointsWriter()
-		s.PointsWriter.WriteTimeout = time.Duration(c.Cluster.WriteTimeout)
-		s.PointsWriter.TSDBStore = s.TSDBStore
-		s.PointsWriter.ShardWriter = s.ShardWriter
-		s.PointsWriter.HintedHandoff = s.HintedHandoff
-		s.PointsWriter.Subscriber = s.Subscriber
-		s.PointsWriter.Node = s.Node
+			// Initialize points writer.
+			s.PointsWriter = cluster.NewPointsWriter()
+			s.PointsWriter.WriteTimeout = time.Duration(c.Cluster.WriteTimeout)
+			s.PointsWriter.TSDBStore = s.TSDBStore
+			s.PointsWriter.ShardWriter = s.ShardWriter
+			s.PointsWriter.HintedHandoff = s.HintedHandoff
+			s.PointsWriter.Subscriber = s.Subscriber
+			s.PointsWriter.Node = s.Node
 
-		// Initialize meta executor.
-		metaExecutor := cluster.NewMetaExecutor()
-		metaExecutor.MetaClient = s.MetaClient
-		metaExecutor.Node = s.Node
+			// Initialize meta executor.
+			metaExecutor := cluster.NewMetaExecutor()
+			metaExecutor.MetaClient = s.MetaClient
+			metaExecutor.Node = s.Node
 
-		// Initialize query executor.
-		s.QueryExecutor = cluster.NewQueryExecutor()
-		s.QueryExecutor.MetaClient = s.MetaClient
-		s.QueryExecutor.TSDBStore = s.TSDBStore
-		s.QueryExecutor.Monitor = s.Monitor
-		s.QueryExecutor.PointsWriter = s.PointsWriter
-		s.QueryExecutor.MetaExecutor = metaExecutor
-		if c.Data.QueryLogEnabled {
-			s.QueryExecutor.LogOutput = os.Stderr
+			// Initialize query executor.
+			s.QueryExecutor = cluster.NewQueryExecutor()
+			s.QueryExecutor.MetaClient = s.MetaClient
+			s.QueryExecutor.TSDBStore = s.TSDBStore
+			s.QueryExecutor.Monitor = s.Monitor
+			s.QueryExecutor.PointsWriter = s.PointsWriter
+			s.QueryExecutor.MetaExecutor = metaExecutor
+			if c.Data.QueryLogEnabled {
+				s.QueryExecutor.LogOutput = os.Stderr
+			}
+
+			// Initialize the monitor
+			s.Monitor.Version = s.buildInfo.Version
+			s.Monitor.Commit = s.buildInfo.Commit
+			s.Monitor.Branch = s.buildInfo.Branch
+			s.Monitor.BuildTime = s.buildInfo.Time
+			s.Monitor.PointsWriter = (*monitorPointsWriter)(s.PointsWriter)
 		}
-
-		// Initialize the monitor
-		s.Monitor.Version = s.buildInfo.Version
-		s.Monitor.Commit = s.buildInfo.Commit
-		s.Monitor.Branch = s.buildInfo.Branch
-		s.Monitor.BuildTime = s.buildInfo.Time
-		s.Monitor.PointsWriter = (*monitorPointsWriter)(s.PointsWriter)
-	}
+	*/
 
 	return s, nil
 }
@@ -411,77 +413,12 @@ func (s *Server) Open() error {
 		return err
 	}
 
-	if s.TSDBStore != nil {
-		// Append services.
-		s.appendClusterService(s.config.Cluster)
-		s.appendPrecreatorService(s.config.Precreator)
-		s.appendSnapshotterService()
-		s.appendCopierService()
-		s.appendAdminService(s.config.Admin)
-		s.appendContinuousQueryService(s.config.ContinuousQuery)
-		s.appendHTTPDService(s.config.HTTPD)
-		s.appendCollectdService(s.config.Collectd)
-		if err := s.appendOpenTSDBService(s.config.OpenTSDB); err != nil {
-			return err
+	s.appendHTTPDService(s.config.HTTPD)
+
+	for _, service := range s.Services {
+		if err := service.Open(); err != nil {
+			return fmt.Errorf("open service: %s", err)
 		}
-		for _, g := range s.config.UDPs {
-			s.appendUDPService(g)
-		}
-		s.appendRetentionPolicyService(s.config.Retention)
-		for _, g := range s.config.Graphites {
-			if err := s.appendGraphiteService(g); err != nil {
-				return err
-			}
-		}
-
-		s.QueryExecutor.Node = s.Node
-
-		s.Subscriber.MetaClient = s.MetaClient
-		s.ShardWriter.MetaClient = s.MetaClient
-		s.HintedHandoff.MetaClient = s.MetaClient
-		s.Subscriber.MetaClient = s.MetaClient
-		s.PointsWriter.MetaClient = s.MetaClient
-		s.Monitor.MetaClient = s.MetaClient
-
-		s.ClusterService.Listener = mux.Listen(cluster.MuxHeader)
-		s.SnapshotterService.Listener = mux.Listen(snapshotter.MuxHeader)
-		s.CopierService.Listener = mux.Listen(copier.MuxHeader)
-
-		// Open TSDB store.
-		if err := s.TSDBStore.Open(); err != nil {
-			return fmt.Errorf("open tsdb store: %s", err)
-		}
-
-		// Open the hinted handoff service
-		if err := s.HintedHandoff.Open(); err != nil {
-			return fmt.Errorf("open hinted handoff: %s", err)
-		}
-
-		// Open the subcriber service
-		if err := s.Subscriber.Open(); err != nil {
-			return fmt.Errorf("open subscriber: %s", err)
-		}
-
-		// Open the points writer service
-		if err := s.PointsWriter.Open(); err != nil {
-			return fmt.Errorf("open points writer: %s", err)
-		}
-
-		// Open the monitor service
-		if err := s.Monitor.Open(); err != nil {
-			return fmt.Errorf("open monitor: %v", err)
-		}
-
-		for _, service := range s.Services {
-			if err := service.Open(); err != nil {
-				return fmt.Errorf("open service: %s", err)
-			}
-		}
-	}
-
-	// Start the reporting service, if not disabled.
-	if !s.reportingDisabled {
-		go s.startServerReporting()
 	}
 
 	return nil

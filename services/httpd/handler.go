@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -402,22 +403,14 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *meta.
 		h.Logger.Printf("write body received by handler: %s", string(b))
 	}
 
-	if r.Header.Get("Content-Type") == "application/json" {
-		h.serveWriteJSON(w, r, b, user)
-		return
-	}
-	h.serveWriteLine(w, r, b, user)
+	h.serveWriteJSON(w, r, b, user)
 }
 
 // serveWriteJSON receives incoming series data in JSON and writes it to the database.
 func (h *Handler) serveWriteJSON(w http.ResponseWriter, r *http.Request, body []byte, user *meta.UserInfo) {
-	if !h.JSONWriteEnabled {
-		resultError(w, influxql.Result{Err: fmt.Errorf("JSON write protocol has been deprecated")}, http.StatusBadRequest)
-		return
-	}
-
 	var bp client.BatchPoints
 	var dec *json.Decoder
+	var port int
 
 	dec = json.NewDecoder(bytes.NewReader(body))
 
@@ -430,27 +423,13 @@ func (h *Handler) serveWriteJSON(w http.ResponseWriter, r *http.Request, body []
 		return
 	}
 
-	if bp.Database == "" {
-		resultError(w, influxql.Result{Err: fmt.Errorf("database is required")}, http.StatusBadRequest)
-		return
-	}
-
-	if di, err := h.MetaClient.Database(bp.Database); err != nil {
-		resultError(w, influxql.Result{Err: fmt.Errorf("metastore database error: %s", err)}, http.StatusInternalServerError)
-		return
-	} else if di == nil {
-		resultError(w, influxql.Result{Err: fmt.Errorf("database not found: %q", bp.Database)}, http.StatusNotFound)
-		return
-	}
-
-	if h.requireAuthentication && user == nil {
-		resultError(w, influxql.Result{Err: fmt.Errorf("user is required to write to database %q", bp.Database)}, http.StatusUnauthorized)
-		return
-	}
-
-	if h.requireAuthentication && !user.Authorize(influxql.WritePrivilege, bp.Database) {
-		resultError(w, influxql.Result{Err: fmt.Errorf("%q user is not authorized to write to database %q", user.Name, bp.Database)}, http.StatusUnauthorized)
-		return
+	switch bp.Database {
+	case "calls":
+		port = 9001
+	case "calls_dev":
+		port = 9002
+	default:
+		port = 9001
 	}
 
 	points, err := NormalizeBatchPoints(bp)
@@ -459,22 +438,17 @@ func (h *Handler) serveWriteJSON(w http.ResponseWriter, r *http.Request, body []
 		return
 	}
 
-	// Convert the json batch struct to a points writer struct
-	if err := h.PointsWriter.WritePoints(&cluster.WritePointsRequest{
-		Database:         bp.Database,
-		RetentionPolicy:  bp.RetentionPolicy,
-		ConsistencyLevel: cluster.ConsistencyLevelOne,
-		Points:           points,
-	}); err != nil {
-		h.statMap.Add(statPointsWrittenFail, int64(len(points)))
-		if influxdb.IsClientError(err) {
-			resultError(w, influxql.Result{Err: err}, http.StatusBadRequest)
-		} else {
-			resultError(w, influxql.Result{Err: err}, http.StatusInternalServerError)
+	go func(points []models.Point, port int) {
+		addr := &net.UDPAddr{IP: []byte{10, 134, 13, 56}, Port: port}
+		conn, _ := net.DialUDP("udp", nil, addr)
+
+		h.Logger.Println("Received JSON payload, sending", len(points), "points via UDP")
+		for _, point := range points {
+			conn.Write([]byte(point.String()))
 		}
-		return
-	}
-	h.statMap.Add(statPointsWrittenOK, int64(len(points)))
+
+		conn.Close()
+	}(points, port)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -960,8 +934,55 @@ func NormalizeBatchPoints(bp client.BatchPoints) ([]models.Point, error) {
 		if len(p.Fields) == 0 {
 			return points, fmt.Errorf("missing fields")
 		}
+
+		if p.Tags == nil {
+			p.Tags = make(map[string]string)
+		}
+		parts := strings.Split(p.Measurement, `.`)
+		measurement, parts := parts[0], parts[1:]
+
+		switch measurement {
+		case "platform":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+		case "device_events":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+		case "netperf_stats":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+			p.Fields["_source"] = parts[2]
+		case "network_stats":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+			p.Fields["_source"] = parts[2]
+		case "network_iface":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+			p.Fields["_source"] = parts[2]
+		case "audio_send_stats":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+			p.Fields["_source"] = parts[2]
+		case "audio_recv_stats":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+			p.Fields["_source"] = parts[2]
+		case "user_event_logs":
+			p.Tags["room_id"] = parts[0]
+		case "user_events":
+			p.Tags["room_id"] = parts[0]
+			p.Fields["_publisher"] = parts[1]
+			p.Fields["_source"] = parts[2]
+		case "janus_health":
+			p.Fields["_publisher"] = parts[0]
+			p.Fields["_source"] = parts[1]
+		default:
+			fmt.Println("Unknown measurement:", measurement, p.Measurement)
+		}
+
 		// Need to convert from a client.Point to a influxdb.Point
-		pt, err := models.NewPoint(p.Measurement, p.Tags, p.Fields, p.Time)
+		pt, err := models.NewPoint(measurement, p.Tags, p.Fields, p.Time)
 		if err != nil {
 			return points, err
 		}
