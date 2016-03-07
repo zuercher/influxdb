@@ -95,14 +95,6 @@ func NewHandler(requireAuthentication, loggingEnabled, writeTrace, JSONWriteEnab
 
 	h.SetRoutes([]route{
 		route{
-			"query", // Satisfy CORS checks.
-			"OPTIONS", "/query", true, true, h.serveOptions,
-		},
-		route{
-			"query", // Query serving route.
-			"GET", "/query", true, true, h.serveQuery,
-		},
-		route{
 			"write", // Satisfy CORS checks.
 			"OPTIONS", "/write", true, true, h.serveOptions,
 		},
@@ -117,18 +109,6 @@ func NewHandler(requireAuthentication, loggingEnabled, writeTrace, JSONWriteEnab
 		route{ // Ping
 			"ping-head",
 			"HEAD", "/ping", true, true, h.servePing,
-		},
-		route{ // Ping w/ status
-			"status",
-			"GET", "/status", true, true, h.serveStatus,
-		},
-		route{ // Ping w/ status
-			"status-head",
-			"HEAD", "/status", true, true, h.serveStatus,
-		},
-		route{ // Tell data node to run CQs that should be run
-			"process_continuous_queries",
-			"POST", "/data/process_continuous_queries", false, false, h.serveProcessContinuousQueries,
 		},
 	})
 
