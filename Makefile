@@ -7,22 +7,26 @@ GIT_COMMIT = $(shell git rev-parse HEAD)
 
 all: envcheck $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
 
-$(TARGETS): restore generate ## Generate a build for each target
+$(TARGETS): generate ## Generate a build for each target
+ifeq ($(shell grep -q '1.4'<<< $$(go version); echo $$?),0)
+	$(eval INFLUX_LINKER_FLAGS = -X main.version $(GIT_TAG) -X main.branch $(GIT_BRANCH) -X main.commit $(GIT_COMMIT))
+else
 	$(eval INFLUX_LINKER_FLAGS = -X main.version=$(GIT_TAG) -X main.branch=$(GIT_BRANCH) -X main.commit=$(GIT_COMMIT))
+endif
 ifeq ($(static), true)
 	$(eval INFLUX_COMPILE_PREPEND = CGO_ENABLED=0 )
 	$(eval INFLUX_COMPILE_PARAMS = -ldflags "-s $(INFLUX_LINKER_FLAGS)" -a -installsuffix cgo )
 else
 	$(eval INFLUX_COMPILE_PARAMS = -ldflags "$(INFLUX_LINKER_FLAGS)" )
 endif
-	$(INFLUX_COMPILE_PREPEND)go install $(INFLUX_COMPILE_PARAMS) ./cmd/$@
+	$(INFLUX_COMPILE_PREPEND)go install $(INFLUX_COMPILE_PARAMS)./cmd/$@
 
 generate: get ## Generate static assets
 	go generate ./services/admin
 
 release: cleanroom all ## Tag and generate a release build, must specify a version (example: make release version=0.1.2)
 
-envcheck:
+envcheck: ## Check environment for any common issues
 ifeq ($$GOPATH,)
 	$(error "No GOPATH set!")
 endif
@@ -30,13 +34,15 @@ ifneq ($(shell grep -q $$GOPATH <<< $$PWD; echo $$?),0)
 	$(error "Current directory ($(PWD)) is not under your GOPATH ($(GOPATH))")
 endif
 
-cleanroom: envcheck
+cleanroom: envcheck ## Create a 'clean room' environment for generating a release
 ifneq ($(shell git diff-files --quiet --ignore-submodules -- ; echo $$?), 0)
 	$(error "Uncommitted changes in the current directory.")
 endif
+	TEMP_DIR=$(shell mktemp -d)
+	echo $(TEMP_DIR)
 
 restore: ## Restore pinned version dependencies with gdm
-	gdm restore
+	$$GOPATH/bin/gdm restore
 
 get: ## Retrieve Go dependencies
 	go get -t -d ./...
@@ -44,7 +50,7 @@ get: ## Retrieve Go dependencies
 get-update: ## Retrieve updated Go dependencies
 	go get -t -u -d ./...
 
-metalint: get-tools deadcode cyclo aligncheck defercheck structcheck lint errcheck
+metalint: get-dev-tools deadcode cyclo aligncheck defercheck structcheck lint errcheck
 
 deadcode:
 	@deadcode $(PACKAGES) 2>&1
@@ -69,7 +75,7 @@ errcheck:
 	  errcheck -ignorepkg=bytes,fmt -ignore=":(Rollback|Close)" $$pkg \
 	done
 
-get-tools: ## Download development tools
+get-dev-tools: ## Download development tools
 	go get github.com/remyoudompheng/go-misc/deadcode
 	go get github.com/alecthomas/gocyclo
 	go get github.com/opennota/check/...
@@ -80,4 +86,4 @@ get-tools: ## Download development tools
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,envcheck
+.PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,envcheck,get-dev-tools
