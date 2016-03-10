@@ -43,7 +43,7 @@ endif
 	mkdir -p $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cp -r . $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cd $(TEMP_DIR)/src/github.com/influxdata/influxdb
-	GOPATH="$(TEMP_DIR)" PWD="$(TEMP_DIR)/src/github.com/influxdata/influxdb/" make all
+	GOPATH="$(TEMP_DIR)" make all
 	cd $(CURR_DIR)
 
 restore: ## Restore pinned version dependencies with gdm
