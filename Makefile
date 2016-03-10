@@ -92,12 +92,13 @@ get-dev-tools: ## Download development tools
 	go get github.com/kisielk/errcheck
 	go get github.com/sparrc/gdm
 
-clean: ## Remove 
+clean: ## Remove existing binaries
 	@for target in $(TARGETS); do \
 		rm -f $$target ; \
 	done
 
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[31m%-31s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,envcheck,get-dev-tools,restore
+.DEFAULT_GOAL := help
