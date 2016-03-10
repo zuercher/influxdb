@@ -42,7 +42,7 @@ endif
 	$(eval TEMP_DIR = $(shell mktemp -d))
 	mkdir -p $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cp -r . $(TEMP_DIR)/src/github.com/influxdata/influxdb
-	cd $(TEMP_DIR)
+	cd $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	GOPATH="$(TEMP_DIR)" PWD="$(TEMP_DIR)" make --file=$(TEMP_DIR)/src/github.com/influxdata/influxdb/Makefile all
 	cd $(CURR_DIR)
 
