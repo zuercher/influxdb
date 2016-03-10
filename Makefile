@@ -19,7 +19,7 @@ ifeq ($(static), true)
 else
 	$(eval INFLUX_COMPILE_PARAMS = -ldflags "$(INFLUX_LINKER_FLAGS)" )
 endif
-	$(INFLUX_COMPILE_PREPEND)go install $(INFLUX_COMPILE_PARAMS)./cmd/$@
+	$(INFLUX_COMPILE_PREPEND)go build -o $$GOPATH/bin/$@ $(INFLUX_COMPILE_PARAMS)./cmd/$@
 
 generate: get ## Generate static assets
 	go generate ./services/admin
