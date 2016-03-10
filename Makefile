@@ -47,6 +47,7 @@ endif
 	cd $(CURR_DIR)
 
 restore: ## Restore pinned version dependencies with gdm
+	echo $$GOPATH
 	go get github.com/sparrc/gdm
 	$$GOPATH/bin/gdm restore -f $$PWD/Godeps
 
