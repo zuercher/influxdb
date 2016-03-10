@@ -48,7 +48,8 @@ endif
 
 restore: ## Restore pinned version dependencies with gdm
 	go get github.com/sparrc/gdm
-	go build -o $$GOPATH/bin github.com/sparrc/gdm
+	mkdir -p $$GOPATH/bin
+	go build -o $$GOPATH/bin/gdm github.com/sparrc/gdm
 	$$GOPATH/bin/gdm restore -f $$PWD/Godeps
 
 get: ## Retrieve Go dependencies
