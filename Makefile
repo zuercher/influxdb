@@ -30,7 +30,8 @@ envcheck: ## Check environment for any common issues
 ifeq ($$GOPATH,)
 	$(error "No GOPATH set!")
 endif
-ifneq ($(shell grep -q $$GOPATH <<< $$PWD; echo $$?),0)
+	$(eval CURR_DIR = $(shell pwd))
+ifneq ($(shell grep -q $$GOPATH <<< $$(pwd); echo $$?),0)
 	$(error "Current directory ($(PWD)) is not under your GOPATH ($(GOPATH))")
 endif
 
