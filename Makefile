@@ -47,9 +47,9 @@ endif
 	cd $(CURR_DIR)
 
 restore: ## Restore pinned version dependencies with gdm
-	echo $$GOPATH
+	mkdir -p $$GOPATH/bin
 	go get github.com/sparrc/gdm
-	go install github.com/sparrc/gdm
+	go build -o $$GOPATH/bin github.com/sparrc/gdm
 	$$GOPATH/bin/gdm restore -f $$PWD/Godeps
 
 get: ## Retrieve Go dependencies
