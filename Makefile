@@ -39,7 +39,7 @@ ifneq ($(shell git diff-files --quiet --ignore-submodules -- ; echo $$?), 0)
 	$(error "Uncommitted changes in the current directory.")
 endif
 	$(eval CURR_DIR = $(shell pwd))
-	$(eval TEMP_DIR = $(shell mktemp -d))
+	$(eval TEMP_DIR = $(shell mktemp -d influxdb-buildXXXX))
 	mkdir -p $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cp -r . $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cd $(TEMP_DIR)/src/github.com/influxdata/influxdb
@@ -92,12 +92,12 @@ get-dev-tools: ## Download development tools
 	go get github.com/kisielk/errcheck
 	go get github.com/sparrc/gdm
 
-clean: ## Remove 
+clean: ## Remove
 	@for target in $(TARGETS); do \
-		rm -f $$target \
+		rm $$target ; \
 	done
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,envcheck,get-dev-tools
+.PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,envcheck,get-dev-tools,clean
