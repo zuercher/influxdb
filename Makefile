@@ -24,7 +24,7 @@ endif
 generate: get ## Generate static assets
 	go generate ./services/admin
 
-release: cleanroom all ## Tag and generate a release build, must specify a version (example: make release version=0.1.2)
+release: cleanroom ## Tag and generate a release build, must specify a version (example: make release version=0.1.2)
 
 envcheck: ## Check environment for any common issues
 ifeq ($$GOPATH,)
@@ -34,7 +34,7 @@ ifneq ($(shell grep -q $$GOPATH <<< $$PWD; echo $$?),0)
 	$(error "Current directory ($(PWD)) is not under your GOPATH ($(GOPATH))")
 endif
 
-cleanroom: ## Create a 'clean room' environment for generating a release
+cleanroom: ## Create a 'clean room' build (copies repository to temporary directory and rebuilds environment)
 ifneq ($(shell git diff-files --quiet --ignore-submodules -- ; echo $$?), 0)
 	$(error "Uncommitted changes in the current directory.")
 endif
@@ -45,6 +45,7 @@ endif
 	cd $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	GOPATH="$(TEMP_DIR)" make all
 	cd $(CURR_DIR)
+	cp $(TEMP_DIR)/bin/influx* .
 
 restore: ## Restore pinned version dependencies with gdm
 	go get github.com/sparrc/gdm
@@ -80,7 +81,7 @@ lint:
 
 errcheck:
 	@for pkg in $(PACKAGES); do \
-	  errcheck -ignorepkg=bytes,fmt -ignore=":(Rollback|Close)" $$pkg \
+		errcheck -ignorepkg=bytes,fmt -ignore=":(Rollback|Close)" $$pkg \
 	done
 
 get-dev-tools: ## Download development tools
@@ -90,6 +91,11 @@ get-dev-tools: ## Download development tools
 	go get github.com/golang/lint/golint
 	go get github.com/kisielk/errcheck
 	go get github.com/sparrc/gdm
+
+clean: ## Remove 
+	@ for target in $(TARGETS); do \
+		rm -f $$target
+	done
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
