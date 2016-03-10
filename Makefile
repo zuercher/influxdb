@@ -30,12 +30,11 @@ envcheck: ## Check environment for any common issues
 ifeq ($$GOPATH,)
 	$(error "No GOPATH set!")
 endif
-	$(eval CURR_DIR = $(shell pwd))
-ifneq ($(shell grep -q $$GOPATH <<< $$(pwd); echo $$?),0)
+ifneq ($(shell grep -q $$GOPATH <<< $$PWD; echo $$?),0)
 	$(error "Current directory ($(PWD)) is not under your GOPATH ($(GOPATH))")
 endif
 
-cleanroom: envcheck ## Create a 'clean room' environment for generating a release
+cleanroom: ## Create a 'clean room' environment for generating a release
 ifneq ($(shell git diff-files --quiet --ignore-submodules -- ; echo $$?), 0)
 	$(error "Uncommitted changes in the current directory.")
 endif
@@ -44,7 +43,7 @@ endif
 	mkdir -p $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cp -r . $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cd $(TEMP_DIR)
-	GOPATH="$(TEMP_DIR)" make --file=$(TEMP_DIR)/src/github.com/influxdata/influxdb/Makefile all
+	GOPATH="$(TEMP_DIR)" PWD="$(TEMP_DIR)" make --file=$(TEMP_DIR)/src/github.com/influxdata/influxdb/Makefile all
 	cd $(CURR_DIR)
 
 restore: ## Restore pinned version dependencies with gdm
