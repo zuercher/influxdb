@@ -93,8 +93,8 @@ get-dev-tools: ## Download development tools
 	go get github.com/sparrc/gdm
 
 clean: ## Remove 
-	@ for target in $(TARGETS); do \
-		rm -f $$target
+	@for target in $(TARGETS); do \
+		rm -f $$target \
 	done
 
 help:
