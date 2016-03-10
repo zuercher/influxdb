@@ -1,13 +1,13 @@
 PACKAGES = $(shell find . -name '*.go' -print0 | xargs -0 -n1 dirname | sort --unique)
 TARGETS := $(shell find ./cmd -type d -depth 1 | xargs basename)
 
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
-GIT_TAG := $(shell git describe --always --tags --abbrev=0)
-GIT_COMMIT := $(shell git rev-parse HEAD)
+GIT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
+GIT_TAG = $(shell git describe --always --tags --abbrev=0 | tr -d 'v')
+GIT_COMMIT = $(shell git rev-parse HEAD)
 
-build: $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
+all: envcheck $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
 
-$(TARGETS): generate
+$(TARGETS): restore generate ## Generate a build for each target
 	$(eval INFLUX_LINKER_FLAGS = -X main.version=$(GIT_TAG) -X main.branch=$(GIT_BRANCH) -X main.commit=$(GIT_COMMIT))
 ifeq ($(static), true)
 	$(eval INFLUX_COMPILE_PREPEND = CGO_ENABLED=0 )
@@ -15,17 +15,28 @@ ifeq ($(static), true)
 else
 	$(eval INFLUX_COMPILE_PARAMS = -ldflags "$(INFLUX_LINKER_FLAGS)" )
 endif
-	$(INFLUX_COMPILE_PREPEND)go build $(INFLUX_COMPILE_PARAMS)-o $@ ./cmd/$@
+	$(INFLUX_COMPILE_PREPEND)go install $(INFLUX_COMPILE_PARAMS) ./cmd/$@
 
 generate: get ## Generate static assets
 	go generate ./services/admin
 
-release: cleanroom ## Generate a release build
+release: cleanroom all ## Tag and generate a release build, must specify a version (example: make release version=0.1.2)
 
-cleanroom:
+envcheck:
+ifeq ($$GOPATH,)
+	$(error "No GOPATH set!")
+endif
+ifneq ($(shell grep -q $$GOPATH <<< $$PWD; echo $$?),0)
+	$(error "Current directory ($(PWD)) is not under your GOPATH ($(GOPATH))")
+endif
+
+cleanroom: envcheck
 ifneq ($(shell git diff-files --quiet --ignore-submodules -- ; echo $$?), 0)
 	$(error "Uncommitted changes in the current directory.")
 endif
+
+restore: ## Restore pinned version dependencies with gdm
+	gdm restore
 
 get: ## Retrieve Go dependencies
 	go get -t -d ./...
@@ -69,4 +80,4 @@ get-tools: ## Download development tools
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,build
+.PHONY: metalint,deadcode,cyclo,aligncheck,defercheck,structcheck,lint,errcheck,help,cleanroom,envcheck
