@@ -5,7 +5,7 @@ GIT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 GIT_TAG = $(shell git describe --always --tags --abbrev=0 | tr -d 'v')
 GIT_COMMIT = $(shell git rev-parse HEAD)
 
-all: envcheck $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
+all: envcheck restore $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
 
 $(TARGETS): generate ## Generate a build for each target
 ifeq ($(shell grep -q '1.4'<<< $$(go version); echo $$?),0)
@@ -38,8 +38,10 @@ cleanroom: envcheck ## Create a 'clean room' environment for generating a releas
 ifneq ($(shell git diff-files --quiet --ignore-submodules -- ; echo $$?), 0)
 	$(error "Uncommitted changes in the current directory.")
 endif
-	TEMP_DIR=$(shell mktemp -d)
-	echo $(TEMP_DIR)
+	$(eval TEMP_DIR = $(shell mktemp -d))
+	mkdir -p $(TEMP_DIR)/src/github.com/influxdata/influxdb
+	cp -r . $(TEMP_DIR)/src/github.com/influxdata/influxdb
+	cd $(TEMP_DIR) && exec GOPATH=$(TEMP_DIR) make --file=$(TEMP_DIR)/src/github.com/influxdata/influxdb/Makefile all
 
 restore: ## Restore pinned version dependencies with gdm
 	$$GOPATH/bin/gdm restore
