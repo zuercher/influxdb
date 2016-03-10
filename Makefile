@@ -5,7 +5,7 @@ GIT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
 GIT_TAG = $(shell git describe --always --tags --abbrev=0 | tr -d 'v')
 GIT_COMMIT = $(shell git rev-parse HEAD)
 
-all: envcheck restore $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
+all: restore $(TARGETS) ## Create a build for each InfluxDB binary (set 'static=true' to generate a static binary)
 
 $(TARGETS): generate ## Generate a build for each target
 ifeq ($(shell grep -q '1.4'<<< $$(go version); echo $$?),0)
@@ -43,7 +43,7 @@ endif
 	mkdir -p $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cp -r . $(TEMP_DIR)/src/github.com/influxdata/influxdb
 	cd $(TEMP_DIR)/src/github.com/influxdata/influxdb
-	GOPATH="$(TEMP_DIR)" PWD="$(TEMP_DIR)" make --file=$(TEMP_DIR)/src/github.com/influxdata/influxdb/Makefile all
+	GOPATH="$(TEMP_DIR)" PWD="$(TEMP_DIR)/src/github.com/influxdata/influxdb/" make all
 	cd $(CURR_DIR)
 
 restore: ## Restore pinned version dependencies with gdm
