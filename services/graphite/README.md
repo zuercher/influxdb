@@ -1,142 +1,46 @@
-# The graphite Input
+# The Graphite Input
 
-## A note on UDP/IP OS Buffer sizes
+The InfluxDB Graphite input accepts Graphite metrics in plaintext protocol.
 
-If you're using UDP input and running Linux or FreeBSD, please adjust your UDP buffer
-size limit, [see here for more details.](../udp/README.md#a-note-on-udpip-os-buffer-sizes)
+- [Configuration](#configuration)
+    - [Basic Config](#basic-config)
+    - [Batch Settings](#batch-settings)
+    - [UDP/IP OS Buffer Sizes](#UDP/ip-os-buffer-sizes)
+    - [Input Tags](#input-tags)
+- [Templates](#templates)
+    - [Default Behavior](#default-behavior)
+- [Pattern Parsing](#pattern-parsing)
+    - [Empty Tokens](#empty-tokens)
+    - [Wildcard](#wildcard)
+    - [Multiple Matching Tokens](#multiple-matching-tokens)
+    - [Template Tags](#template-tags)
+- [Multiple Templates](#multiple-templates)
+    - [Filters](#filters)
+    - [Base Template](#base-template)
+- [Advanced Configuration Examples](#advanced-configuration-examples)
 
 ## Configuration
 
-Each Graphite input allows the binding address, target database, and protocol to be set. If the database does not exist, it will be created automatically when the input is initialized. The write-consistency-level can also be set. If any write operations do not meet the configured consistency guarantees, an error will occur and the data will not be indexed. The default consistency-level is `ONE`.
+Each Graphite input allows the binding address, target database, and protocol to be set.
+If the database does not exist, it will be created automatically when the input is initialized.
 
-Each Graphite input also performs internal batching of the points it receives, as batched writes to the database are more efficient. The default _batch size_ is 1000, _pending batch_ factor is 5, with a _batch timeout_ of 1 second. This means the input will write batches of maximum size 1000, but if a batch has not reached 1000 points within 1 second of the first point being added to a batch, it will emit that batch regardless of size. The pending batch factor controls how many batches can be in memory at once, allowing the input to transmit a batch, while still building other batches.
+Multiple Graphite inputs can be configured to listen on different ports with different settings by specifying multiple `[[graphite]]` sections in the InfluxDB configuration file.
 
-## Parsing Metrics
+#### Basic config
 
-The graphite plugin allows measurements to be saved using the graphite line protocol. By default, enabling the graphite plugin will allow you to collect metrics and store them using the metric name as the measurement.  If you send a metric named `servers.localhost.cpu.loadavg.10`, it will store the full metric name as the measurement with no extracted tags.
+Here is an example of a basic Graphite template configuration:
 
-While this default setup works, it is not the ideal way to store measurements in InfluxDB since it does not take advantage of tags.  It also will not perform optimally with a large dataset sizes since queries will be forced to use regexes which is known to not scale well.
-
-To extract tags from metrics, one or more templates must be configured to parse metrics into tags and measurements.
-
-## Templates
-
-Templates allow matching parts of a metric name to be used as tag keys in the stored metric.  They have a similar format to graphite metric names.  The values in between the separators are used as the tag keys.  The location of the tag key that matches the same position as the graphite metric section is used as the value.  If there is no value, the graphite portion is skipped.
-
-The special value _measurement_ is used to define the measurement name.  It can have a trailing `*` to indicate that the remainder of the metric should be used.  If a _measurement_ is not specified, the full metric name is used.
-
-### Basic Matching
-
-`servers.localhost.cpu.loadavg.10`
-* Template: `.host.resource.measurement*`
-* Output:  _measurement_ =`loadavg.10` _tags_ =`host=localhost resource=cpu`
-
-### Multiple Measurement & Tags Matching
-
-The _measurement_ can be specified multiple times in a template to provide more control over the measurement name. Tags can also be
-matched multiple times. Multiple values will be joined together using the _Separator_ config variable.  By default, this value is `.`.
-
-`servers.localhost.localdomain.cpu.cpu0.user`
-* Template: `.host.host.measurement.cpu.measurement`
-* Output: _measurement_ = `cpu.user` _tags_ = `host=localhost.localdomain cpu=cpu0`
-
-Since '.' requires queries on measurements to be double-quoted, you may want to set this to `_` to simplify querying parsed metrics.
-
-`servers.localhost.cpu.cpu0.user`
-* Separator: `_`
-* Template: `.host.measurement.cpu.measurement`
-* Output: _measurement_ = `cpu_user` _tags_ = `host=localhost cpu=cpu0`
-
-### Adding Tags
-
-Additional tags can be added to a metric that don't exist on the received metric.  You can add additional tags by specifying them after the pattern.  Tags have the same format as the line protocol.  Multiple tags are separated by commas.
-
-`servers.localhost.cpu.loadavg.10`
-* Template: `.host.resource.measurement* region=us-west,zone=1a`
-* Output:  _measurement_ = `loadavg.10` _tags_ = `host=localhost resource=cpu region=us-west zone=1a`
-
-### Fields
-
-A field key can be specified by using the keyword _field_. By default if no _field_ keyword is specified then the metric will be written to a field named _value_.
-
-The field key can also be derived from the second "half" of the input metric-name by specifying ```field*``` (eg ```measurement.measurement.field*```). This cannot be used in conjunction with "measurement*"!
-
-When using the current default engine _BZ1_, it's recommended to use a single field per value for performance reasons.
-
-When using the _TSM1_ engine it's possible to amend measurement metrics with additional fields, e.g:
-
-Input:
-```
-sensu.metric.net.server0.eth0.rx_packets 461295119435 1444234982
-sensu.metric.net.server0.eth0.tx_bytes 1093086493388480 1444234982
-sensu.metric.net.server0.eth0.rx_bytes 1015633926034834 1444234982
-sensu.metric.net.server0.eth0.tx_errors 0 1444234982
-sensu.metric.net.server0.eth0.rx_errors 0 1444234982
-sensu.metric.net.server0.eth0.tx_dropped 0 1444234982
-sensu.metric.net.server0.eth0.rx_dropped 0 1444234982
-```
-
-With template:
-```
-sensu.metric.* ..measurement.host.interface.field
-```
-
-Becomes database entry:
-```
-> select * from net
-name: net
----------
-time      host  interface rx_bytes    rx_dropped  rx_errors rx_packets    tx_bytes    tx_dropped  tx_errors
-1444234982000000000 server0  eth0    1.015633926034834e+15 0   0   4.61295119435e+11 1.09308649338848e+15  0 0
-```
-
-## Multiple Templates
-
-One template may not match all metrics.  For example, using multiple plugins with diamond will produce metrics in different formats.  If you need to use multiple templates, you'll need to define a prefix filter that must match before the template can be applied.
-
-### Filters
-
-Filters have a similar format to templates but work more like wildcard expressions.  When multiple filters would match a metric, the more specific one is chosen.  Filters are configured by adding them before the template.
-
-For example,
-
-```
-servers.localhost.cpu.loadavg.10
-servers.host123.elasticsearch.cache_hits 100
-servers.host456.mysql.tx_count 10
-servers.host789.prod.mysql.tx_count 10
-```
-* `servers.*` would match all values
-* `servers.*.mysql` would match `servers.host456.mysql.tx_count 10`
-* `servers.localhost.*` would match `servers.localhost.cpu.loadavg`
-* `servers.*.*.mysql` would match `servers.host789.prod.mysql.tx_count 10`
-
-## Default Templates
-
-If no template filters are defined or you want to just have one basic template, you can define a default template.  This template will apply to any metric that has not already matched a filter.
-
-```
-dev.http.requests.200
-prod.myapp.errors.count
-dev.db.queries.count
-```
-
-* `env.app.measurement*` would create
-  * _measurement_=`requests.200` _tags_=`env=dev,app=http`
-  * _measurement_= `errors.count` _tags_=`env=prod,app=myapp`
-  * _measurement_=`queries.count` _tags_=`env=dev,app=db`
-
-## Global Tags
-
-If you need to add the same set of tags to all metrics, you can define them globally at the plugin level and not within each template description.
-
-## Minimal Config
 ```
 [[graphite]]
   enabled = true
   # bind-address = ":2003"
   # protocol = "tcp"
-  # consistency-level = "one"
+  # database = "graphite"
+
+  # batch-size = 5000
+  # batch-pending = 10
+  # batch-timeout = "1s"
+  # udp-read-buffer = 0
 
   ### If matching multiple measurement files, this string will be used to join the matched values.
   # separator = "."
@@ -156,8 +60,264 @@ If you need to add the same set of tags to all metrics, you can define them glob
  #]
 ```
 
-## Customized Config
+#### Batch settings
+
+The Graphite input performs internal batching of the points each input receives.
+
+The default `batch-size` is 1000, `batch-pending` factor is 5, with a `batch-timeout` of 1 second.
+This means the input will write a batch every time a maximum of 1000 points are received within the timeout window of 1 second.
+Increasing the batch size is the easiest way to improve performance.
+
+If a batch has not reached 1000 points within 1 second of the first point being added to a batch, it will emit that batch regardless of size.
+Points can be lost in the window from when they are received to when the batch timeout is triggered (assuming the number of points received in the window is less than the batch size).
+Adjusting the batch timeout window to a longer window will increase the window where points may be lost at the benefit of reducing the number of write operations, which can be useful in low power/low throughput situations.
+
+The pending batch factor limits the number of batches held in memory at once.
+New points will not be accepted when the number of pending batches waiting to be written is equal to the pending batch factor.
+Increasing the batch pending factor will increase the ability for the input to handle spikes in traffic at the expense of higher memory use.
+
+#### UDP/IP OS Buffer sizes
+
+Using the UDP protocol while running Linux or FreeBSD, may require adjustment of the UDP buffer size limit with the `udp-read-buffer` setting
+For more detail, see [the note on UDP/IP OS buffer sizes in the UDP plugin readme](../udp/README.md#a-note-on-udpip-os-buffer-sizes).
+
+#### Input Tags
+
+Tags can be set for all points received by a Graphite input.
+They should be specified as a TOML list of tag keys and values in InfluxDB line protocol format.
+
 ```
+tags = ["region=us-east", "zone=1c"]
+```
+
+Note that tags defined by templates will overwrite any matching input tags.
+This makes input tags useful for defining default values for all points received by a plugin.
+
+## Templates
+
+Templates are the main feature of InfluxDB's Graphite input.
+They allow incoming points formatted in Graphite's plaintext metric format to be transformed into InfluxDB points.
+Templates are composed of the following three pieces: `[filter] <pattern> [tags]`
+- an optional [filter](#filter) to match which points to which the template will apply
+- a required [pattern](#pattern) to translate a Graphite metric path into InfluxDB format
+- an optional set of [tags](#tags) to add to all Graphite metrics matching the filter
+
+Here is an example of the configuration to define a single template.
+
+```
+templates = ["*.app env..service.measurement.field app=load_balancer"]
+```
+
+Each Graphite input can define [multiple templates](#multiple-templates), so a single Graphite input can parse a diverse stream of metrics using multiple filters and patterns.
+
+#### Default Behavior
+
+By default, if no templates are specified or a metric does not match any template filters, the Graphite metric path is used as the InfluxDB measurement name and the field key will be `value`.
+No tags will be assigned.
+
+For example, sending this Graphite metric with no template defined:
+
+```
+servers.localhost.cpu.loadavg.10 12 1459382400
+-------------------------------- -- ----------
+                |                |       |
+          metric path          field timestamp
+                               value
+```
+
+Will be translated into this point (in [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/write_protocols/line/) format):
+
+```
+servers.localhost.cpu.loadavg.10 value=12 1459382400
+```
+
+Notice the InfluxDB measurement name is the same as the full Graphite metric path, `servers.localhost.cpu.loadavg.10`, with no extracted tags.
+
+While this default setup works, it is not the ideal way to store measurements in InfluxDB since it does not take advantage of tags.
+This means queries will always need to use regular expressions to select multiple measurements at once, which does not scale well.
+
+To extract tags from metrics, one or more templates with a pattern must be configured to parse the Graphite metric path.
+
+## Pattern Parsing
+
+A pattern is the only required piece of a template.
+Patterns can extract the following information from each Graphite metric:
+- a measurement name
+- tag values (for a set of tag keys)
+- a field name
+
+The format of a pattern is similar to the format of Graphite metric path.
+Periods (`.`) are used to reference parts of a Graphite metric path and assign those parts to tokens.
+The tokens can be either `measurement`, `field`, or a string representing a tag key.
+Each part of the Graphite metric path is matched to the token at the same position on the pattern.
+The matching part of the Graphite metric then becomes the value of the corresponding token.
+
+If no `measurement` is specified in a pattern, the full Graphite metric path is used as the measurement name.
+
+If no `field` is specified in a pattern, the field name will always default to `value`.
+
+For example, sending this Graphite metric to InfluxDB's Graphite input:
+
+```
+localhost.cpu.loadavg.10 12 1459382400
+```
+
+And applying the following template, which only has a pattern:
+
+```
+host.measurement.field.cpu
+```
+
+Will translated the metric into the following point (in [InfluxDB line protocol](https://docs.influxdata.com/influxdb/latest/write_protocols/line/) format):
+
+```
+cpu,host=localhost,cpu=10 loadavg=12 1459382400
+```
+
+#### Empty Tokens
+
+Empty tokens in a pattern cause the matching part of the Graphite metric to be skipped.
+
+```
+# Graphite metric
+servers.localhost.cpu.load.loadavg.10 12 1459382400
+# Template
+.host.measurement..field.cpu
+# Resulting point in InfluxDB line protocol
+cpu,host=localhost,cpu=10 loadavg=12 1459382400
+```
+
+#### Wildcard
+
+A trailing asterisk on the last measurement or field token appends any remaining parts of the Graphite metric path to that token.
+This is known as a wildcard token.
+Only one wildcard may be used per pattern and it must be the last token.
+
+```
+# Graphite metric
+servers.localhost.cpu.load.loadavg.10 12 1459382400
+# Template
+.host.measurement.field*
+# Resulting point in InfluxDB line protocol
+cpu,host=localhost load.loadavg.10=12 1459382400
+```
+
+```
+# Graphite metric
+servers.localhost.cpu.load.loadavg.10 12 1459382400
+# Template
+.host.measurement*
+# Resulting point in InfluxDB line protocol
+cpu.load.loadavg.10,host=localhost value=12 1459382400
+```
+
+Note the field name is `value` in the example above because the `field` token is not specified.
+
+#### Multiple Matching Tokens
+
+Tokens can be specified multiple times in a pattern to provide more control over naming.
+Every identical token will cause the matching parts of the Graphite metric path to be joined together with a separator separating each part.
+
+The `separator` is defined in the configuration file.
+By default, value of the separator is a period (`.`).
+The underscore (`_`) is frequently used as an alternative separator, since periods have another meaning in InfluxQL (separating identifiers in a `FROM` statement) which can lead to confusing query syntax.
+
+```
+# Graphite metric
+servers.localhost.localdomain.cpu.cpu0.user 402 1459382400
+# Template with default "." separator
+.host.host.measurement.cpu.measurement
+# Resulting point in InfluxDB line protocol
+cpu.user,host=localhost.localdomain,cpu=cpu0 value=402 1459382400
+```
+
+```
+# Graphite metric
+servers.localhost.localdomain.cpu.cpu0.user 402 1459382400
+# Template with "_" separator
+field.host.host.measurement.cpu.field
+# Resulting point in InfluxDB line protocol
+cpu,host=localhost_localdomain,cpu=cpu0 servers_user=402 1459382400
+```
+
+#### Template Tags
+
+Additional tags can be defined per template.
+They must come after the pattern and separated with a space.
+The tags must have the same format as InfluxDB line protocol tags with multiple tags separated by commas.
+
+```
+# Graphite metric
+servers.localhost.cpu.loadavg.10 23141 1459382400
+# Template with pattern and tags
+.host.resource.measurement* region=us-west,zone=1a
+# Resulting point in InfluxDB line protocol
+loadavg.10,host=localhost,resource=cpu,region=us-west,zone=1a value=23141 1459382400
+```
+
+Tags on a template will override any [input tags](#input-tags).
+
+## Multiple Templates
+
+One template may not work for all metrics.
+For example, using multiple plugins with diamond will produce metrics in different formats.
+In these cases, multiple templates can be defined with a prefix filter that must match a metric before a pattern will be applied.
+
+Here is an example of the configuration to define a multiple templates.
+
+```
+templates = [
+  "*.app env..service.measurement.field app=load_balancer",
+  "stats.* .host.measurement.field",
+  "server.*",
+]
+```
+
+#### Filters
+
+A filter can be added to the beginning of a template, before the pattern and separated by a space.
+
+Filters have a similar format to patterns where the tokens are delineated by periods (`.`).
+However, the tokens act like regular expressions on the corresponding part of the metric, either exact matching the token exactly or ignoring the part completely for wildcard (`*`) token.
+When an incoming metric matches a filter, the pattern for that template is applied to the matching metric.
+
+When there are multiple templates with filters, the template with the most specific filter is applied to matching points.
+
+```
+# Graphite metric
+servers.localhost.cpu.loadavg.10 23141 1459382400
+servers.host123.elasticsearch.cache_hits 100 1459382400
+servers.host456.mysql.tx_count 10 1459382400
+servers.host789.prod.mysql.tx_count 10 1459382400
+# List of filters with matched Graphite metric paths
+servers.localhost.*  -> matches "servers.localhost.cpu.loadavg"
+servers.*.*.mysql    -> matches "servers.host789.prod.mysql.tx_count"
+servers.*.mysql      -> matches "servers.host456.mysql.tx_count"
+servers.*            -> matches "servers.host123.elasticsearch.cache_hits"
+```
+
+#### Base Template
+
+If multiple templates with filters are defined, one base template can be defined to .
+This template will apply to any metric that has not already matched a filter.
+
+```
+dev.http.requests.200
+prod.myapp.errors.count
+dev.db.queries.count
+```
+
+* `env.app.measurement*` would create
+  * _measurement_=`requests.200` _tags_=`env=dev,app=http`
+  * _measurement_= `errors.count` _tags_=`env=prod,app=myapp`
+  * _measurement_=`queries.count` _tags_=`env=dev,app=db`
+
+## Advanced Configuration Examples
+
+The following configurations provide some additional examples which use the different template features explained above 
+
+```
+# Example configuration with complicated template setup
 [[graphite]]
    enabled = true
    separator = "_"
@@ -177,20 +337,17 @@ If you need to add the same set of tags to all metrics, you can define them glob
  ]
 ```
 
-## Two graphite listener, UDP & TCP, Config
-
 ```
+# Example with multiple Graphite listeners listening for UDP and TCP on different ports
 [[graphite]]
   enabled = true
   bind-address = ":2003"
   protocol = "tcp"
-  # consistency-level = "one"
 
 [[graphite]]
   enabled = true
-  bind-address = ":2004" # the bind address
-  protocol = "udp" # protocol to read via
-  udp-read-buffer = 8388608 # (8*1024*1024) UDP read buffer size
+  bind-address = ":2004" # note different bind address
+  protocol = "udp"
 ```
 
 
