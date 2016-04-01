@@ -691,19 +691,23 @@ func TestApplyTemplateField(t *testing.T) {
 	}
 }
 
-func TestApplyTemplateFieldError(t *testing.T) {
-	o := graphite.Options{
-		Separator: "_",
-		Templates: []string{"current.* measurement.field.field"},
-	}
-	p, err := graphite.NewParserWithOptions(o)
+func TestFilterMatchMultipleField(t *testing.T) {
+	p, err := graphite.NewParser([]string{"servers.localhost measurement.host.field.field*"}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error creating parser, got %v", err)
 	}
 
-	_, _, _, err = p.ApplyTemplate("current.users.logged_in")
-	if err == nil {
-		t.Errorf("Parser.ApplyTemplate unexpected result. got %s, exp %s", err,
-			"'field' can only be used once in each template: current.users.logged_in")
+	exp := models.MustNewPoint("servers",
+		models.Tags{"host": "localhost"},
+		models.Fields{"cpu.cpu_load.10": float64(11)},
+		time.Unix(1435077219, 0))
+
+	pt, err := p.Parse("servers.localhost.cpu.cpu_load.10 11 1435077219")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	if exp.String() != pt.String() {
+		t.Errorf("parse mismatch: got %v, exp %v", pt.String(), exp.String())
 	}
 }

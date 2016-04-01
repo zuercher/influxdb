@@ -247,12 +247,15 @@ func (t *template) Apply(line string) (string, map[string]string, string, error)
 		if tag == "measurement" {
 			measurement = append(measurement, fields[i])
 		} else if tag == "field" {
-			if len(field) != 0 {
-				return "", nil, "", fmt.Errorf("'field' can only be used once in each template: %q", line)
+			if field != "" {
+				field += t.separator
 			}
-			field = fields[i]
+			field += fields[i]
 		} else if tag == "field*" {
-			field = strings.Join(fields[i:], t.separator)
+			if field != "" {
+				field += t.separator
+			}
+			field += strings.Join(fields[i:], t.separator)
 			break
 		} else if tag == "measurement*" {
 			measurement = append(measurement, fields[i:]...)
