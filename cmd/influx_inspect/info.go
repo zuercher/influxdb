@@ -82,7 +82,7 @@ func countSeries(tstore *tsdb.Store) int {
 	var count int
 	for _, shardID := range tstore.ShardIDs() {
 		shard := tstore.Shard(shardID)
-		cnt, err := shard.SeriesCount()
+		cnt, err := shard.SeriesN()
 		if err != nil {
 			fmt.Printf("series count failed: %v\n", err)
 			continue

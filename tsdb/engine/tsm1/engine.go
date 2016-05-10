@@ -397,8 +397,6 @@ func (e *Engine) addToIndexFromKey(shardID uint64, key string, fieldType influxq
 	// Have we already indexed this series?
 	ss := index.Series(seriesKey)
 	if ss != nil {
-		// Add this shard to the existing series
-		ss.AssignShard(shardID)
 		return nil
 	}
 
@@ -407,9 +405,7 @@ func (e *Engine) addToIndexFromKey(shardID uint64, key string, fieldType influxq
 	_, tags, _ := models.ParseKey(seriesKey)
 
 	s := tsdb.NewSeries(seriesKey, tags)
-	s.InitializeShards()
 	index.CreateSeriesIndexIfNotExists(measurement, s)
-	s.AssignShard(shardID)
 
 	return nil
 }

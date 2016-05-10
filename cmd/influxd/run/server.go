@@ -367,12 +367,7 @@ func (s *Server) reportServer() {
 	// Only needed in the case of a data node
 	if s.TSDBStore != nil {
 		for _, di := range dis {
-			d := s.TSDBStore.DatabaseIndex(di.Name)
-			if d == nil {
-				// No data in this store for this database.
-				continue
-			}
-			m, s := d.MeasurementSeriesCounts()
+			m, s := s.TSDBStore.MeasurementSeriesCounts(di.Name)
 			numMeasurements += m
 			numSeries += s
 		}

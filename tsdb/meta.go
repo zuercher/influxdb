@@ -109,11 +109,7 @@ func (d *DatabaseIndex) MeasurementSeriesCounts() (nMeasurements int, nSeries in
 func (d *DatabaseIndex) SeriesShardN(shardID uint64) int {
 	var n int
 	d.mu.RLock()
-	for _, s := range d.series {
-		if s.Assigned(shardID) {
-			n++
-		}
-	}
+	n = len(d.series)
 	d.mu.RUnlock()
 	return n
 }
@@ -175,57 +171,6 @@ func (d *DatabaseIndex) CreateMeasurementIndexIfNotExists(name string) *Measurem
 		d.statMap.Add(statDatabaseMeasurements, 1)
 	}
 	return m
-}
-
-// AssignShard update the index to indicate that series k exists in
-// the given shardID
-func (d *DatabaseIndex) AssignShard(k string, shardID uint64) {
-	ss := d.Series(k)
-	if ss != nil {
-		ss.AssignShard(shardID)
-	}
-}
-
-// UnassignShard updates the index to indicate that series k does not exist in
-// the given shardID
-func (d *DatabaseIndex) UnassignShard(k string, shardID uint64) {
-	ss := d.Series(k)
-	if ss != nil {
-		if ss.Assigned(shardID) {
-			// Remove the shard from any series
-			ss.UnassignShard(shardID)
-
-			// If this series no longer has shards assigned, remove the series
-			if ss.ShardN() == 0 {
-
-				// Remove the series the measurements
-				ss.measurement.DropSeries(ss)
-
-				// If the measurement no longer has any series, remove it as well
-				if !ss.measurement.HasSeries() {
-					d.mu.Lock()
-					d.dropMeasurement(ss.measurement.Name)
-					d.statMap.Add(statDatabaseMeasurements, int64(-1))
-					d.mu.Unlock()
-				}
-
-				// Remove the series key from the series index
-				d.mu.Lock()
-				delete(d.series, k)
-				d.statMap.Add(statDatabaseSeries, int64(-1))
-				d.mu.Unlock()
-			}
-		}
-	}
-}
-
-// RemoveShard removes all references to shardID from any series or measurements
-// in the index.  If the shard was the only owner of data for the series, the series
-// is removed from the index.
-func (d *DatabaseIndex) RemoveShard(shardID uint64) {
-	for _, k := range d.SeriesKeys() {
-		d.UnassignShard(k, shardID)
-	}
 }
 
 // TagsForSeries returns the tag map for the passed in series
@@ -1453,42 +1398,14 @@ type Series struct {
 	Tags        map[string]string
 	id          uint64
 	measurement *Measurement
-	shardIDs    map[uint64]bool // shards that have this series defined
 }
 
 // NewSeries returns an initialized series struct
 func NewSeries(key string, tags map[string]string) *Series {
 	return &Series{
-		Key:      key,
-		Tags:     tags,
-		shardIDs: make(map[uint64]bool),
+		Key:  key,
+		Tags: tags,
 	}
-}
-
-func (s *Series) AssignShard(shardID uint64) {
-	s.mu.Lock()
-	s.shardIDs[shardID] = true
-	s.mu.Unlock()
-}
-
-func (s *Series) UnassignShard(shardID uint64) {
-	s.mu.Lock()
-	delete(s.shardIDs, shardID)
-	s.mu.Unlock()
-}
-
-func (s *Series) Assigned(shardID uint64) bool {
-	s.mu.RLock()
-	b := s.shardIDs[shardID]
-	s.mu.RUnlock()
-	return b
-}
-
-func (s *Series) ShardN() int {
-	s.mu.RLock()
-	n := len(s.shardIDs)
-	s.mu.RUnlock()
-	return n
 }
 
 // MarshalBinary encodes the object to a binary format.
@@ -1521,13 +1438,6 @@ func (s *Series) UnmarshalBinary(buf []byte) error {
 		s.Tags[t.GetKey()] = t.GetValue()
 	}
 	return nil
-}
-
-// InitializeShards initializes the list of shards.
-func (s *Series) InitializeShards() {
-	s.mu.Lock()
-	s.shardIDs = make(map[uint64]bool)
-	s.mu.Unlock()
 }
 
 // SeriesIDs is a convenience type for sorting, checking equality, and doing

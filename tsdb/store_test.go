@@ -193,7 +193,7 @@ func TestStore_Open_InvalidRetentionPolicy(t *testing.T) {
 	// Store should ignore database since it's a file.
 	if err := s.Open(); err != nil {
 		t.Fatal(err)
-	} else if n := s.DatabaseIndexN(); n != 1 {
+	} else if n := s.DatabaseIndexN(); n != 0 {
 		t.Fatalf("unexpected database index count: %d", n)
 	}
 }
@@ -213,7 +213,7 @@ func TestStore_Open_InvalidShard(t *testing.T) {
 	// Store should ignore shard since it does not have a numeric name.
 	if err := s.Open(); err != nil {
 		t.Fatal(err)
-	} else if n := s.DatabaseIndexN(); n != 1 {
+	} else if n := s.DatabaseIndexN(); n != 0 {
 		t.Fatalf("unexpected database index count: %d", n)
 	} else if n := s.ShardN(); n != 0 {
 		t.Fatalf("unexpected shard count: %d", n)

@@ -104,7 +104,7 @@ type Shard struct {
 }
 
 // NewShard returns a new initialized Shard. walPath doesn't apply to the b1 type index
-func NewShard(id uint64, index *DatabaseIndex, path string, walPath string, options EngineOptions) *Shard {
+func NewShard(id uint64, path string, walPath string, options EngineOptions) *Shard {
 	// Configure statistics collection.
 	key := fmt.Sprintf("shard:%s:%d", path, id)
 	db, rp := DecodeStorePath(path)
@@ -118,7 +118,7 @@ func NewShard(id uint64, index *DatabaseIndex, path string, walPath string, opti
 	statMap := influxdb.NewStatistics(key, "shard", tags)
 
 	s := &Shard{
-		index:   index,
+		index:   NewDatabaseIndex(db),
 		id:      id,
 		path:    path,
 		walPath: walPath,
@@ -214,9 +214,6 @@ func (s *Shard) close() error {
 	default:
 		close(s.closing)
 	}
-
-	// Don't leak our shard ID and series keys in the index
-	s.index.RemoveShard(s.id)
 
 	err := s.engine.Close()
 	if err == nil {
@@ -324,10 +321,7 @@ func (s *Shard) DeleteSeries(seriesKeys []string) error {
 	if s.closed() {
 		return ErrEngineClosed
 	}
-	if err := s.engine.DeleteSeries(seriesKeys); err != nil {
-		return err
-	}
-	return nil
+	return s.engine.DeleteSeries(seriesKeys)
 }
 
 // DeleteSeriesRange deletes all values from for seriesKeys between min and max (inclusive)
@@ -339,20 +333,49 @@ func (s *Shard) DeleteSeriesRange(seriesKeys []string, min, max int64) error {
 		return err
 	}
 
+	exists, err := s.ContainsSeries(seriesKeys)
+	if err != nil {
+		return err
+	}
+
+	deleted := make([]string, len(seriesKeys))
+	for k, exists := range exists {
+		if !exists {
+			deleted = append(deleted, k)
+		}
+	}
+	s.index.DropSeries(deleted)
 	return nil
 }
 
 // DeleteMeasurement deletes a measurement and all underlying series.
-func (s *Shard) DeleteMeasurement(name string, seriesKeys []string) error {
+func (s *Shard) DeleteMeasurement(name string) error {
 	if s.closed() {
 		return ErrEngineClosed
 	}
 
-	if err := s.engine.DeleteMeasurement(name, seriesKeys); err != nil {
+	m := s.index.Measurement(name)
+	if m == nil {
+		return influxql.ErrMeasurementNotFound(name)
+	}
+
+	if err := s.engine.DeleteMeasurement(name, m.SeriesKeys()); err != nil {
 		return err
 	}
 
+	s.index.DropMeasurement(name)
+
 	return nil
+}
+
+// Measurement returns the measurement object from the index by the name
+func (s *Shard) Measurement(name string) *Measurement {
+	return s.index.Measurement(name)
+}
+
+// Measurements returns a list of all measurements.
+func (s *Shard) Measurements() []*Measurement {
+	return s.index.Measurements()
 }
 
 func (s *Shard) createFieldsAndMeasurements(fieldsToCreate []*FieldCreate) error {
@@ -392,7 +415,6 @@ func (s *Shard) validateSeriesAndFields(points []models.Point) ([]*FieldCreate, 
 		}
 
 		ss = s.index.CreateSeriesIndexIfNotExists(p.Name(), ss)
-		s.index.AssignShard(ss.Key, s.id)
 
 		// see if the field definitions need to be saved to the shard
 		mf := s.engine.MeasurementFields(p.Name())
@@ -423,11 +445,16 @@ func (s *Shard) validateSeriesAndFields(points []models.Point) ([]*FieldCreate, 
 }
 
 // SeriesCount returns the number of series buckets on the shard.
-func (s *Shard) SeriesCount() (int, error) {
+func (s *Shard) SeriesN() (int, error) {
 	if s.closed() {
 		return 0, ErrEngineClosed
 	}
-	return s.engine.SeriesCount()
+	return s.index.SeriesN(), nil
+}
+
+// Series returns a series by key.
+func (s *Shard) Series(key string) *Series {
+	return s.index.Series(key)
 }
 
 // WriteTo writes the shard's data to w.
