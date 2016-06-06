@@ -104,11 +104,11 @@ func (t *TaskManager) executeShowQueriesStatement(q *ShowQueriesStatement) (mode
 		} else {
 			ds = (d - (d % time.Second)).String()
 		}
-		values = append(values, []interface{}{id, qi.query, qi.database, ds})
+		values = append(values, []interface{}{id, qi.query, qi.user, qi.database, ds})
 	}
 
 	return []*models.Row{{
-		Columns: []string{"qid", "query", "database", "duration"},
+		Columns: []string{"qid", "query", "user", "database", "duration"},
 		Values:  values,
 	}}, nil
 }
@@ -127,7 +127,7 @@ func (t *TaskManager) query(qid uint64) (*QueryTask, bool) {
 // query finishes running.
 //
 // After a query finishes running, the system is free to reuse a query id.
-func (t *TaskManager) AttachQuery(q *Query, database string, interrupt <-chan struct{}) (uint64, *QueryTask, error) {
+func (t *TaskManager) AttachQuery(q *Query, opt ExecutionOptions, interrupt <-chan struct{}) (uint64, *QueryTask, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -142,7 +142,8 @@ func (t *TaskManager) AttachQuery(q *Query, database string, interrupt <-chan st
 	qid := t.nextID
 	query := &QueryTask{
 		query:     q.String(),
-		database:  database,
+		user:      opt.User.Name(),
+		database:  opt.Database,
 		startTime: time.Now(),
 		closing:   make(chan struct{}),
 		monitorCh: make(chan error),
@@ -188,6 +189,7 @@ func (t *TaskManager) KillQuery(qid uint64) error {
 type QueryInfo struct {
 	ID       uint64        `json:"id"`
 	Query    string        `json:"query"`
+	User     string        `json:"user"`
 	Database string        `json:"database"`
 	Duration time.Duration `json:"duration"`
 }
@@ -202,6 +204,7 @@ func (t *TaskManager) Queries() []QueryInfo {
 		queries = append(queries, QueryInfo{
 			ID:       id,
 			Query:    qi.query,
+			User:     qi.user,
 			Database: qi.database,
 			Duration: now.Sub(qi.startTime),
 		})

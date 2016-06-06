@@ -58,6 +58,9 @@ type ExecutionOptions struct {
 	// The database the query is running against.
 	Database string
 
+	// The user running the query.
+	User UserInfo
+
 	// The requested maximum number of points to return in each result.
 	ChunkSize int
 
@@ -157,7 +160,12 @@ func (e *QueryExecutor) executeQuery(query *Query, opt ExecutionOptions, closing
 		e.statMap.Add(statQueryExecutionDuration, time.Since(start).Nanoseconds())
 	}(time.Now())
 
-	qid, task, err := e.TaskManager.AttachQuery(query, opt.Database, closing)
+	// Set a default anonymous user.
+	if opt.User == nil {
+		opt.User = (*anonymousUser)(nil)
+	}
+
+	qid, task, err := e.TaskManager.AttachQuery(query, opt, closing)
 	if err != nil {
 		results <- &Result{Err: err}
 		return
@@ -256,6 +264,7 @@ type QueryMonitorFunc func(<-chan struct{}) error
 // For the public use data structure that gets returned, see QueryTask.
 type QueryTask struct {
 	query     string
+	user      string
 	database  string
 	startTime time.Time
 	closing   chan struct{}

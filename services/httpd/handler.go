@@ -368,6 +368,7 @@ func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user *meta.
 	w.Header().Add("Content-Type", "application/json")
 	results := h.QueryExecutor.ExecuteQuery(query, influxql.ExecutionOptions{
 		Database:  db,
+		User:      UserInfo{UserInfo: user},
 		ChunkSize: chunkSize,
 		ReadOnly:  r.Method == "GET",
 	}, closing)
