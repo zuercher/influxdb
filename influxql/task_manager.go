@@ -1,6 +1,7 @@
 package influxql
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -79,6 +80,9 @@ func (t *TaskManager) ExecuteStatement(stmt Statement, ctx ExecutionContext) err
 }
 
 func (t *TaskManager) executeKillQueryStatement(stmt *KillQueryStatement) error {
+	if stmt.Host != "" {
+		return errors.New("kill on host option not supported")
+	}
 	return t.KillQuery(stmt.QueryID)
 }
 
