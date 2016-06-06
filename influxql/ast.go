@@ -2563,7 +2563,7 @@ func (s *ShowRetentionPoliciesStatement) String() string {
 
 // RequiredPrivileges returns the privilege(s) required to execute a ShowRetentionPoliciesStatement
 func (s *ShowRetentionPoliciesStatement) RequiredPrivileges() (ExecutionPrivileges, error) {
-	return ExecutionPrivileges{{Admin: false, Name: "", Privilege: ReadPrivilege}}, nil
+	return ExecutionPrivileges{{Admin: false, Name: s.Database, Privilege: ReadPrivilege}}, nil
 }
 
 // ShowStatsStatement displays statistics for a given module.
