@@ -51,7 +51,7 @@ func NewTaskManager() *TaskManager {
 func (t *TaskManager) ExecuteStatement(stmt Statement, ctx ExecutionContext) error {
 	switch stmt := stmt.(type) {
 	case *ShowQueriesStatement:
-		rows, err := t.executeShowQueriesStatement(stmt)
+		rows, err := t.executeShowQueriesStatement(stmt, &ctx)
 		if err != nil {
 			return err
 		}
@@ -66,7 +66,7 @@ func (t *TaskManager) ExecuteStatement(stmt Statement, ctx ExecutionContext) err
 			messages = append(messages, ReadOnlyWarning(stmt.String()))
 		}
 
-		if err := t.executeKillQueryStatement(stmt); err != nil {
+		if err := t.executeKillQueryStatement(stmt, &ctx); err != nil {
 			return err
 		}
 		ctx.Results <- &Result{
@@ -79,21 +79,35 @@ func (t *TaskManager) ExecuteStatement(stmt Statement, ctx ExecutionContext) err
 	return nil
 }
 
-func (t *TaskManager) executeKillQueryStatement(stmt *KillQueryStatement) error {
+func (t *TaskManager) executeKillQueryStatement(stmt *KillQueryStatement, ctx *ExecutionContext) error {
 	if stmt.Host != "" {
 		return errors.New("kill on host option not supported")
+	}
+
+	// If this user is not an admin, check if they own the query.
+	// Non-admin users do not have permission to kill queries that aren't theirs.
+	if !ctx.User.IsAdmin() {
+		query, ok := t.query(stmt.QueryID)
+		if !ok || query.user != ctx.User.Name() {
+			return fmt.Errorf("no such query id: %d", ctx.QueryID)
+		}
 	}
 	return t.KillQuery(stmt.QueryID)
 }
 
-func (t *TaskManager) executeShowQueriesStatement(q *ShowQueriesStatement) (models.Rows, error) {
+func (t *TaskManager) executeShowQueriesStatement(q *ShowQueriesStatement, ctx *ExecutionContext) (models.Rows, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	now := time.Now()
+	admin := ctx.User.IsAdmin()
 
 	values := make([][]interface{}, 0, len(t.queries))
 	for id, qi := range t.queries {
+		// Skip queries not run by this user if not an admin.
+		if !admin && ctx.User.Name() != qi.user {
+			continue
+		}
 		d := now.Sub(qi.startTime)
 
 		var ds string

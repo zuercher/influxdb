@@ -2544,7 +2544,7 @@ func (s *ShowQueriesStatement) String() string {
 
 // RequiredPrivileges returns the privilege required to execute a ShowQueriesStatement.
 func (s *ShowQueriesStatement) RequiredPrivileges() (ExecutionPrivileges, error) {
-	return ExecutionPrivileges{{Admin: false, Name: "", Privilege: ReadPrivilege}}, nil
+	return ExecutionPrivileges{}, nil
 }
 
 // ShowRetentionPoliciesStatement represents a command for listing retention policies.
