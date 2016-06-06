@@ -163,7 +163,7 @@ func (e *StatementExecutor) ExecuteStatement(stmt influxql.Statement, ctx influx
 	case *influxql.ShowContinuousQueriesStatement:
 		rows, err = e.executeShowContinuousQueriesStatement(stmt)
 	case *influxql.ShowDatabasesStatement:
-		rows, err = e.executeShowDatabasesStatement(stmt)
+		rows, err = e.executeShowDatabasesStatement(stmt, ctx)
 	case *influxql.ShowDiagnosticsStatement:
 		rows, err = e.executeShowDiagnosticsStatement(stmt)
 	case *influxql.ShowGrantsForUserStatement:
@@ -751,11 +751,15 @@ func (e *StatementExecutor) executeShowContinuousQueriesStatement(stmt *influxql
 	return rows, nil
 }
 
-func (e *StatementExecutor) executeShowDatabasesStatement(q *influxql.ShowDatabasesStatement) (models.Rows, error) {
+func (e *StatementExecutor) executeShowDatabasesStatement(q *influxql.ShowDatabasesStatement, ctx *influxql.ExecutionContext) (models.Rows, error) {
 	dis := e.MetaClient.Databases()
 
+	admin := ctx.User.IsAdmin()
 	row := &models.Row{Name: "databases", Columns: []string{"name"}}
 	for _, di := range dis {
+		if !admin && !ctx.User.Authorize(influxql.ReadPrivilege, di.Name) {
+			continue
+		}
 		row.Values = append(row.Values, []interface{}{di.Name})
 	}
 	return []*models.Row{row}, nil
