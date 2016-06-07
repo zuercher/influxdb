@@ -47,7 +47,7 @@ func NewTaskManager() *TaskManager {
 	}
 }
 
-func (t *TaskManager) ExecuteStatement(stmt Statement, ctx *ExecutionContext) error {
+func (t *TaskManager) ExecuteStatement(stmt Statement, ctx ExecutionContext) error {
 	switch stmt := stmt.(type) {
 	case *ShowQueriesStatement:
 		rows, err := t.executeShowQueriesStatement(stmt)
