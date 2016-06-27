@@ -602,14 +602,35 @@ func new{{$k.Name}}FillIterator(input {{$k.Name}}Iterator, expr Expr, opt Iterat
 func (itr *{{$k.name}}FillIterator) Stats() IteratorStats { return itr.input.Stats() }
 func (itr *{{$k.name}}FillIterator) Close() error { return itr.input.Close() }
 
+func (itr *{{$k.name}}FillIterator) nextWindow() (bool, error) {
+	p, err := itr.input.Next()
+	if p == nil || err != nil {
+		return false, err
+	}
+
+	// Consume the first point in the interval if we are using the previous fill.
+	if itr.opt.Fill == PreviousFill {
+		if (itr.opt.Ascending && p.Time >= itr.opt.StartTime) || (!itr.opt.Ascending && p.Time <= itr.opt.EndTime) {
+			itr.prev = nil
+			itr.input.unread(p)
+		} else {
+			itr.prev = p
+		}
+	} else {
+		itr.input.unread(p)
+	}
+
+	itr.window.name, itr.window.tags = p.Name, p.Tags
+	itr.window.time = itr.startTime
+	return true, nil
+}
+
 func (itr *{{$k.name}}FillIterator) Next() (*{{$k.Name}}Point, error) {
 	if !itr.init {
-		p, err := itr.input.peek()
-		if p == nil || err != nil {
+		// Initialize the first window.
+		if ok, err := itr.nextWindow(); !ok || err != nil {
 			return nil, err
 		}
-		itr.window.name, itr.window.tags = p.Name, p.Tags
-		itr.window.time = itr.startTime
 		itr.init = true
 	}
 
@@ -643,9 +664,7 @@ func (itr *{{$k.name}}FillIterator) Next() (*{{$k.Name}}Point, error) {
 		}
 
 		// Set the new interval.
-		itr.window.name, itr.window.tags = p.Name, p.Tags
-		itr.window.time = itr.startTime
-		itr.prev = nil
+		itr.nextWindow()
 		break
 	}
 

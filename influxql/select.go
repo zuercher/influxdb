@@ -305,7 +305,16 @@ func buildExprIterator(expr Expr, ic IteratorCreator, opt IteratorOptions, selec
 			}
 			panic(fmt.Sprintf("invalid series aggregate function: %s", expr.Name))
 		default:
-			itr, err := func() (Iterator, error) {
+			callOpt := opt
+			if !opt.Interval.IsZero() && opt.Fill == PreviousFill {
+				if opt.Ascending {
+					callOpt.StartTime -= int64(opt.Interval.Duration)
+				} else {
+					callOpt.EndTime += int64(opt.Interval.Duration)
+				}
+			}
+
+			itr, err := func(opt IteratorOptions) (Iterator, error) {
 				switch expr.Name {
 				case "count":
 					switch arg := expr.Args[0].(type) {
@@ -417,7 +426,7 @@ func buildExprIterator(expr Expr, ic IteratorCreator, opt IteratorOptions, selec
 				default:
 					return nil, fmt.Errorf("unsupported call: %s", expr.Name)
 				}
-			}()
+			}(callOpt)
 
 			if err != nil {
 				return nil, err
