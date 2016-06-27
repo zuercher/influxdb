@@ -551,13 +551,8 @@ func (f *FileStore) BlockCount(path string, idx int) int {
 func (f *FileStore) locations(key string, t int64, ascending bool) []*location {
 	var locations []*location
 
-	filesSnapshot := make([]TSMFile, len(f.files))
-	for i := range f.files {
-		filesSnapshot[i] = f.files[i]
-	}
-
 	var entries []IndexEntry
-	for _, fd := range filesSnapshot {
+	for _, fd := range f.files {
 		minTime, maxTime := fd.TimeRange()
 
 		tombstones := fd.TombstoneRange(key)
