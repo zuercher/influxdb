@@ -17,6 +17,9 @@ type Emitter struct {
 	tags Tags
 	row  *models.Row
 
+	// Emit float values with no exponent.
+	NoExponent bool
+
 	// The columns to attach to each row.
 	Columns []string
 
@@ -26,12 +29,13 @@ type Emitter struct {
 }
 
 // NewEmitter returns a new instance of Emitter that pulls from itrs.
-func NewEmitter(itrs []Iterator, ascending bool, chunkSize int) *Emitter {
+func NewEmitter(itrs []Iterator, ascending bool, chunkSize int, noExponent bool) *Emitter {
 	return &Emitter{
-		buf:       make([]Point, len(itrs)),
-		itrs:      itrs,
-		ascending: ascending,
-		chunkSize: chunkSize,
+		buf:        make([]Point, len(itrs)),
+		itrs:       itrs,
+		ascending:  ascending,
+		chunkSize:  chunkSize,
+		NoExponent: noExponent,
 	}
 }
 
@@ -188,6 +192,9 @@ func (e *Emitter) readIterator(itr Iterator) (Point, error) {
 		if p, err := itr.Next(); err != nil {
 			return nil, err
 		} else if p != nil {
+			if e.NoExponent {
+				return &NoExponentFloatPoint{p}, nil
+			}
 			return p, nil
 		}
 	case IntegerIterator:

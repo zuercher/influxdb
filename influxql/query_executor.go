@@ -71,6 +71,9 @@ type ExecutionOptions struct {
 
 	// Quiet suppresses non-essential output from the query executor.
 	Quiet bool
+
+	// Return float values with no exponent.
+	NoExponent bool
 }
 
 // ExecutionContext contains state that the query is currently executing with.

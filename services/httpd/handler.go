@@ -451,13 +451,17 @@ func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user *meta.
 		}
 	}
 
+	// Parse whether floats/integers should be returned with an exponent.
+	noExponent := r.FormValue("no_exponent") == "true"
+
 	// Execute query.
 	rw.Header().Add("Connection", "close")
 	results := h.QueryExecutor.ExecuteQuery(query, influxql.ExecutionOptions{
-		Database:  db,
-		ChunkSize: chunkSize,
-		ReadOnly:  r.Method == "GET",
-		NodeID:    nodeID,
+		Database:   db,
+		ChunkSize:  chunkSize,
+		ReadOnly:   r.Method == "GET",
+		NodeID:     nodeID,
+		NoExponent: noExponent,
 	}, closing)
 
 	// If we are running in async mode, open a goroutine to drain the results
@@ -1125,24 +1129,6 @@ func (r Response) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(&o)
-}
-
-// UnmarshalJSON decodes the data into the Response struct
-func (r *Response) UnmarshalJSON(b []byte) error {
-	var o struct {
-		Results []*influxql.Result `json:"results,omitempty"`
-		Err     string             `json:"error,omitempty"`
-	}
-
-	err := json.Unmarshal(b, &o)
-	if err != nil {
-		return err
-	}
-	r.Results = o.Results
-	if o.Err != "" {
-		r.Err = errors.New(o.Err)
-	}
-	return nil
 }
 
 // Error returns the first error from any statement.

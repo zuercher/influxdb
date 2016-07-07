@@ -3,9 +3,11 @@ package influxql
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 
 	"github.com/gogo/protobuf/proto"
 	internal "github.com/influxdata/influxdb/influxql/internal"
@@ -56,6 +58,19 @@ func (a Points) Clone() []Point {
 		}
 	}
 	return other
+}
+
+// FloatPointNoExponent represents a FloatPoint with a json.Number value.
+// It should only be used when emitting emitter.NoExponent == true.
+type NoExponentFloatPoint struct {
+	Point
+}
+
+func (v *NoExponentFloatPoint) value() interface{} {
+	if v == nil {
+		return nil
+	}
+	return json.Number(strconv.FormatFloat(v.Point.value().(float64), 'f', -1, 64))
 }
 
 // Tags represent a map of keys and values.

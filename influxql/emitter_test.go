@@ -23,7 +23,7 @@ func TestEmitter_Emit(t *testing.T) {
 			{Name: "cpu", Tags: ParseTags("region=north"), Time: 0, Value: 4},
 			{Name: "mem", Time: 4, Value: 5},
 		}},
-	}, true, 0)
+	}, true, 0, false)
 	e.Columns = []string{"col1", "col2"}
 
 	// Verify the cpu region=west is emitted first.
@@ -84,7 +84,7 @@ func TestEmitter_ChunkSize(t *testing.T) {
 			{Name: "cpu", Tags: ParseTags("region=west"), Time: 0, Value: 1},
 			{Name: "cpu", Tags: ParseTags("region=west"), Time: 1, Value: 2},
 		}},
-	}, true, 1)
+	}, true, 1, false)
 	e.Columns = []string{"col1"}
 
 	// Verify the cpu region=west is emitted first.

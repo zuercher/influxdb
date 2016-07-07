@@ -1067,6 +1067,53 @@ func TestServer_Query_EpochPrecision(t *testing.T) {
 	}
 }
 
+// Ensure the server can query float values which return no exponent.
+func TestServer_Query_NoExponent(t *testing.T) {
+	t.Parallel()
+	s := OpenServer(NewConfig())
+	defer s.Close()
+
+	now := now()
+
+	test := NewTest("db0", "rp0")
+	test.writes = Writes{
+		&Write{data: `cpu,host=server01 f_value=111111111 ` + strconv.FormatInt(now.UnixNano(), 10)},
+		&Write{data: `cpu,host=server01 i_value=111111111i ` + strconv.FormatInt(now.UnixNano(), 10)},
+		&Write{data: `cpu,host=server01 s_value="111111111" ` + strconv.FormatInt(now.UnixNano(), 10)},
+	}
+
+	test.addQueries([]*Query{
+		&Query{
+			name:    "float with exponent",
+			command: `SELECT * FROM db0.rp0.cpu GROUP BY *`,
+			params:  url.Values{"no_exponent": []string{"false"}},
+			exp:     fmt.Sprintf(`{"results":[{"series":[{"name":"cpu","tags":{"host":"server01"},"columns":["time","f_value","i_value","s_value"],"values":[["%s",1.11111111e+08,111111111,"111111111"]]}]}]}`, now.Format(time.RFC3339Nano)),
+		},
+		&Query{
+			name:    "float with no exponent",
+			command: `SELECT * FROM db0.rp0.cpu GROUP BY *`,
+			params:  url.Values{"no_exponent": []string{"true"}},
+			exp:     fmt.Sprintf(`{"results":[{"series":[{"name":"cpu","tags":{"host":"server01"},"columns":["time","f_value","i_value","s_value"],"values":[["%s",111111111,111111111,"111111111"]]}]}]}`, now.Format(time.RFC3339Nano)),
+		},
+	}...)
+
+	if err := test.init(s); err != nil {
+		t.Fatalf("test init failed: %s", err)
+	}
+
+	for _, query := range test.queries {
+		if query.skip {
+			t.Logf("SKIP:: %s", query.name)
+			continue
+		}
+		if err := query.Execute(s); err != nil {
+			t.Error(query.Error(err))
+		} else if !query.success() {
+			t.Error(query.failureMessage())
+		}
+	}
+}
+
 // Ensure the server works with tag queries.
 func TestServer_Query_Tags(t *testing.T) {
 	t.Parallel()
