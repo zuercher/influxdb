@@ -197,7 +197,7 @@ func (e *QueryExecutor) executeQuery(query *Query, opt ExecutionOptions, closing
 
 	var i int
 	for ; i < len(query.Statements); i++ {
-		ctx.StatementID = i
+		ctx.StatementID = i + 1
 		stmt := query.Statements[i]
 
 		// If a default database wasn't passed in by the caller, check the statement.
@@ -241,7 +241,7 @@ func (e *QueryExecutor) executeQuery(query *Query, opt ExecutionOptions, closing
 		// Send an error for this result if it failed for some reason.
 		if err != nil {
 			results <- &Result{
-				StatementID: i,
+				StatementID: ctx.StatementID,
 				Err:         err,
 			}
 			// Stop after the first error.
@@ -252,7 +252,7 @@ func (e *QueryExecutor) executeQuery(query *Query, opt ExecutionOptions, closing
 	// Send error results for any statements which were not executed.
 	for ; i < len(query.Statements)-1; i++ {
 		results <- &Result{
-			StatementID: i,
+			StatementID: i + 1,
 			Err:         ErrNotExecuted,
 		}
 	}

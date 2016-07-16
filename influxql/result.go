@@ -58,7 +58,7 @@ func ReadOnlyWarning(stmt string) *Message {
 type Result struct {
 	// StatementID is just the statement's position in the query. It's used
 	// to combine statement results if they're being buffered in memory.
-	StatementID int `json:"-"`
+	StatementID int `json:"statement_id"`
 	Series      models.Rows
 	Messages    []*Message
 	Err         error
@@ -68,12 +68,14 @@ type Result struct {
 func (r *Result) MarshalJSON() ([]byte, error) {
 	// Define a struct that outputs "error" as a string.
 	var o struct {
-		Series   []*models.Row `json:"series,omitempty"`
-		Messages []*Message    `json:"messages,omitempty"`
-		Err      string        `json:"error,omitempty"`
+		StatementID int           `json:"statement_id"`
+		Series      []*models.Row `json:"series,omitempty"`
+		Messages    []*Message    `json:"messages,omitempty"`
+		Err         string        `json:"error,omitempty"`
 	}
 
 	// Copy fields to output struct.
+	o.StatementID = r.StatementID
 	o.Series = r.Series
 	o.Messages = r.Messages
 	if r.Err != nil {
