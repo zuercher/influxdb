@@ -456,9 +456,7 @@ func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user *meta.
 			n, _ := w.Write(MarshalJSON(Response{
 				Results: []*influxql.Result{r},
 			}, pretty))
-			if !pretty {
-				w.Write([]byte("\n"))
-			}
+			w.Write([]byte("\n"))
 			atomic.AddInt64(&h.stats.QueryRequestBytesTransmitted, int64(n))
 			w.(http.Flusher).Flush()
 			continue
@@ -506,6 +504,7 @@ func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user *meta.
 			r.Series = r.Series[rowsMerged:]
 			cr.Series = append(cr.Series, r.Series...)
 			cr.Messages = append(cr.Messages, r.Messages...)
+			cr.Partial = r.Partial
 		} else {
 			resp.Results = append(resp.Results, r)
 		}

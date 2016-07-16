@@ -11,6 +11,7 @@ type Row struct {
 	Tags    map[string]string `json:"tags,omitempty"`
 	Columns []string          `json:"columns,omitempty"`
 	Values  [][]interface{}   `json:"values,omitempty"`
+	Partial bool              `json:"partial,omitempty"`
 	Err     error             `json:"err,omitempty"`
 }
 
