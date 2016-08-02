@@ -673,11 +673,14 @@ func (itr *integerIterator) Close() error {
 	for _, c := range itr.aux {
 		c.close()
 	}
+	itr.aux = nil
 	for _, c := range itr.conds.curs {
 		c.close()
 	}
+	itr.conds.curs = nil
 	if itr.cur != nil {
-		return itr.cur.close()
+		itr.cur.close()
+		itr.cur = nil
 	}
 	return nil
 }
@@ -790,6 +793,10 @@ func (c *integerAscendingCursor) peekTSM() (t int64, v int64) {
 // close closes the cursor and any dependent cursors.
 func (c *integerAscendingCursor) close() error {
 	c.tsm.keyCursor.Close()
+	c.tsm.keyCursor = nil
+	c.tsm.buf = nil
+	c.cache.values = nil
+	c.tsm.values = nil
 	return nil
 }
 

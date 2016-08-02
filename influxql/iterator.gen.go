@@ -2314,6 +2314,9 @@ func (itr *integerMergeIterator) Close() error {
 	for _, input := range itr.inputs {
 		input.Close()
 	}
+	itr.curr = nil
+	itr.inputs = nil
+	itr.heap = nil
 	return nil
 }
 
