@@ -89,6 +89,7 @@ const (
 	GRANTS
 	GROUP
 	GROUPS
+	HAVING
 	IN
 	INF
 	INSERT
@@ -205,6 +206,7 @@ var tokens = [...]string{
 	GRANTS:        "GRANTS",
 	GROUP:         "GROUP",
 	GROUPS:        "GROUPS",
+	HAVING:        "HAVING",
 	IN:            "IN",
 	INF:           "INF",
 	INSERT:        "INSERT",

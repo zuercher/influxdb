@@ -920,6 +920,11 @@ func (p *Parser) parseSelectStatement(tr targetRequirement) (*SelectStatement, e
 		return nil, err
 	}
 
+	// Parse aggregate condition: "HAVING EXPR"
+	if stmt.Having, err = p.parseHaving(); err != nil {
+		return nil, err
+	}
+
 	// Parse fill options: "fill(<option>)"
 	if stmt.Fill, stmt.FillValue, err = p.parseFill(); err != nil {
 		return nil, err
@@ -2111,6 +2116,18 @@ func (p *Parser) parseDimensions() (Dimensions, error) {
 		}
 	}
 	return dimensions, nil
+}
+
+// parseHaving parses the "HAVING" clause of the query, if it exists.
+func (p *Parser) parseHaving() (Expr, error) {
+	// If the next token is not HAVING then exit.
+	if tok, _, _ := p.scanIgnoreWhitespace(); tok != HAVING {
+		p.unscan()
+		return nil, nil
+	}
+
+	// Parse the expression in the HAVING clause.
+	return p.ParseExpr()
 }
 
 // parseDimension parses a single dimension.

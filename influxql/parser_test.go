@@ -1011,6 +1011,39 @@ func TestParser_ParseStatement(t *testing.T) {
 			},
 		},
 
+		// SELECT ... HAVING ...
+		{
+			s: `SELECT mean(value) FROM cpu WHERE time >= now() - 12h GROUP BY time(1h) HAVING min(value) > 50`,
+			stmt: &influxql.SelectStatement{
+				Fields: []*influxql.Field{{
+					Expr: &influxql.Call{
+						Name: "mean",
+						Args: []influxql.Expr{&influxql.VarRef{Val: "value"}}}}},
+				Dimensions: []*influxql.Dimension{
+					{Expr: &influxql.Call{
+						Name: "time",
+						Args: []influxql.Expr{&influxql.DurationLiteral{Val: time.Hour}}}},
+				},
+				Sources: []influxql.Source{&influxql.Measurement{Name: "cpu"}},
+				Condition: &influxql.BinaryExpr{
+					Op:  influxql.GTE,
+					LHS: &influxql.VarRef{Val: "time"},
+					RHS: &influxql.BinaryExpr{
+						Op:  influxql.SUB,
+						LHS: &influxql.Call{Name: "now"},
+						RHS: &influxql.DurationLiteral{Val: 12 * time.Hour},
+					},
+				},
+				Having: &influxql.BinaryExpr{
+					Op: influxql.GT,
+					LHS: &influxql.Call{
+						Name: "min",
+						Args: []influxql.Expr{&influxql.VarRef{Val: "value"}}},
+					RHS: &influxql.IntegerLiteral{Val: 50},
+				},
+			},
+		},
+
 		// See issues https://github.com/influxdata/influxdb/issues/1647
 		// and https://github.com/influxdata/influxdb/issues/4404
 		// DELETE statement

@@ -911,6 +911,9 @@ type SelectStatement struct {
 	// An expression evaluated on data point.
 	Condition Expr
 
+	// An aggregate expression evaluated an interval.
+	Having Expr
+
 	// Fields to sort results by
 	SortFields SortFields
 
@@ -1350,6 +1353,10 @@ func (s *SelectStatement) String() string {
 	if len(s.Dimensions) > 0 {
 		_, _ = buf.WriteString(" GROUP BY ")
 		_, _ = buf.WriteString(s.Dimensions.String())
+	}
+	if s.Having != nil {
+		_, _ = buf.WriteString(" HAVING ")
+		_, _ = buf.WriteString(s.Having.String())
 	}
 	switch s.Fill {
 	case NoFill:
