@@ -7,6 +7,7 @@
 - [#7066](https://github.com/influxdata/influxdb/issues/7066): Add support for secure transmission via collectd.
 - [#7554](https://github.com/influxdata/influxdb/pull/7554): update latest dependencies with Godeps.
 - [#7368](https://github.com/influxdata/influxdb/pull/7368): Introduce syntax for marking a partial response with chunking.
+- [#7633](https://github.com/influxdata/influxdb/pull/7633): improve write performance significantly.
 
 ### Bugfixes
 
