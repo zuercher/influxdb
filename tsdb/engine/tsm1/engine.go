@@ -1477,6 +1477,9 @@ func (e *Engine) buildCursor(measurement, seriesKey string, ref *influxql.VarRef
 func (e *Engine) buildFloatCursor(measurement, seriesKey, field string, opt influxql.IteratorOptions) floatCursor {
 	cacheValues := e.Cache.Values(SeriesFieldKey(seriesKey, field))
 	keyCursor := e.KeyCursor(SeriesFieldKey(seriesKey, field), opt.SeekTime(), opt.Ascending)
+	if keyCursor == nil {
+		return nil
+	}
 	return newFloatCursor(opt.SeekTime(), opt.Ascending, cacheValues, keyCursor)
 }
 
@@ -1484,6 +1487,9 @@ func (e *Engine) buildFloatCursor(measurement, seriesKey, field string, opt infl
 func (e *Engine) buildIntegerCursor(measurement, seriesKey, field string, opt influxql.IteratorOptions) integerCursor {
 	cacheValues := e.Cache.Values(SeriesFieldKey(seriesKey, field))
 	keyCursor := e.KeyCursor(SeriesFieldKey(seriesKey, field), opt.SeekTime(), opt.Ascending)
+	if keyCursor == nil {
+		return nil
+	}
 	return newIntegerCursor(opt.SeekTime(), opt.Ascending, cacheValues, keyCursor)
 }
 
@@ -1491,6 +1497,9 @@ func (e *Engine) buildIntegerCursor(measurement, seriesKey, field string, opt in
 func (e *Engine) buildStringCursor(measurement, seriesKey, field string, opt influxql.IteratorOptions) stringCursor {
 	cacheValues := e.Cache.Values(SeriesFieldKey(seriesKey, field))
 	keyCursor := e.KeyCursor(SeriesFieldKey(seriesKey, field), opt.SeekTime(), opt.Ascending)
+	if keyCursor == nil {
+		return nil
+	}
 	return newStringCursor(opt.SeekTime(), opt.Ascending, cacheValues, keyCursor)
 }
 
@@ -1498,6 +1507,9 @@ func (e *Engine) buildStringCursor(measurement, seriesKey, field string, opt inf
 func (e *Engine) buildBooleanCursor(measurement, seriesKey, field string, opt influxql.IteratorOptions) booleanCursor {
 	cacheValues := e.Cache.Values(SeriesFieldKey(seriesKey, field))
 	keyCursor := e.KeyCursor(SeriesFieldKey(seriesKey, field), opt.SeekTime(), opt.Ascending)
+	if keyCursor == nil {
+		return nil
+	}
 	return newBooleanCursor(opt.SeekTime(), opt.Ascending, cacheValues, keyCursor)
 }
 
