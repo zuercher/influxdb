@@ -48,6 +48,10 @@ type PointsWriter struct {
 	WriteTimeout time.Duration
 	Logger       *log.Logger
 
+	// sglistPool is a pool of sgList objects that are used to build up a list
+	// of shard groups needed for points within a write batch.
+	sglistPool sync.Pool
+
 	Node *influxdb.Node
 
 	MetaClient interface {
@@ -98,7 +102,12 @@ func NewPointsWriter() *PointsWriter {
 		closing:      make(chan struct{}),
 		WriteTimeout: DefaultWriteTimeout,
 		Logger:       log.New(os.Stderr, "[write] ", log.LstdFlags),
-		stats:        &WriteStatistics{},
+		sglistPool: sync.Pool{
+			New: func() interface{} {
+				return make(sgList, 0, 8)
+			},
+		},
+		stats: &WriteStatistics{},
 	}
 }
 
@@ -106,6 +115,10 @@ func NewPointsWriter() *PointsWriter {
 type ShardMapping struct {
 	Points map[uint64][]models.Point  // The points associated with a shard ID
 	Shards map[uint64]*meta.ShardInfo // The shards that have been mapped, keyed by shard ID
+
+	// A hint for pre-allocating the []models.Point when a new shard ID is added
+	// to Points.
+	phint int
 }
 
 // NewShardMapping creates an empty ShardMapping
@@ -118,6 +131,11 @@ func NewShardMapping() *ShardMapping {
 
 // MapPoint maps a point to shard
 func (s *ShardMapping) MapPoint(shardInfo *meta.ShardInfo, p models.Point) {
+	_, ok := s.Points[shardInfo.ID]
+	if !ok {
+		s.Points[shardInfo.ID] = make([]models.Point, 0, s.phint)
+	}
+
 	s.Points[shardInfo.ID] = append(s.Points[shardInfo.ID], p)
 	s.Shards[shardInfo.ID] = shardInfo
 }
@@ -199,7 +217,10 @@ func (w *PointsWriter) MapShards(wp *WritePointsRequest) (*ShardMapping, error) 
 	}
 
 	// Holds all the shard groups and shards that are required for writes.
-	list := make(sgList, 0, 8)
+	// Returned to the pool when MapShards returns.
+	list := w.sglistPool.Get().(sgList)
+	defer w.sglistPool.Put(list)
+
 	min := time.Unix(0, models.MinNanoTime)
 	if rp.Duration > 0 {
 		min = time.Now().Add(-rp.Duration)
@@ -226,8 +247,13 @@ func (w *PointsWriter) MapShards(wp *WritePointsRequest) (*ShardMapping, error) 
 	}
 
 	mapping := NewShardMapping()
+	// phint provides a hint as to how big a slice to allocate when adding the
+	// points to the shard mapping.
+	mapping.phint = len(wp.Points)
+
+	var sg *meta.ShardGroupInfo
 	for _, p := range wp.Points {
-		sg := list.ShardGroupAt(p.Time())
+		sg = list.ShardGroupAt(p.Time())
 		if sg == nil {
 			// We didn't create a shard group because the point was outside the
 			// scope of the RP.

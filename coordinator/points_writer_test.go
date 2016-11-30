@@ -30,7 +30,9 @@ func TestPointsWriter_MapShards_One(t *testing.T) {
 		return &rp.ShardGroups[0], nil
 	}
 
-	c := coordinator.PointsWriter{MetaClient: ms}
+	c := coordinator.NewPointsWriter()
+	c.MetaClient = ms
+
 	pr := &coordinator.WritePointsRequest{
 		Database:        "mydb",
 		RetentionPolicy: "myrp",
@@ -635,7 +637,8 @@ var sm *coordinator.ShardMapping
 
 func benchmarkMapShards(b *testing.B, points map[string]int) {
 	ms := NewPointsWriterMetaClient(1)
-	c := coordinator.PointsWriter{MetaClient: ms}
+	c := coordinator.NewPointsWriter()
+	c.MetaClient = ms
 
 	requests := []*coordinator.WritePointsRequest{}
 	for db, n := range points {
