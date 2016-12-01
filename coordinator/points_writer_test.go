@@ -276,7 +276,7 @@ func TestPointsWriter_WritePoints(t *testing.T) {
 
 		// Ensure that the test shard groups are created before the points
 		// are created.
-		ms := NewPointsWriterMetaClient()
+		ms := NewPointsWriterMetaClient(3)
 
 		// Three points that range over the shardGroup duration (1h) and should map to two
 		// distinct shards
@@ -514,19 +514,15 @@ func (f *fakeStore) CreateShard(database, retentionPolicy string, shardID uint64
 	return f.CreateShardfn(database, retentionPolicy, shardID, enabled)
 }
 
-func NewPointsWriterMetaClient() *PointsWriterMetaClient {
+func NewPointsWriterMetaClient(owners int) *PointsWriterMetaClient {
 	ms := &PointsWriterMetaClient{}
-	rp := NewRetentionPolicy("myp", time.Hour, 3)
-	AttachShardGroupInfo(rp, []meta.ShardOwner{
-		{NodeID: 1},
-		{NodeID: 2},
-		{NodeID: 3},
-	})
-	AttachShardGroupInfo(rp, []meta.ShardOwner{
-		{NodeID: 1},
-		{NodeID: 2},
-		{NodeID: 3},
-	})
+	rp := NewRetentionPolicy("rp0", time.Hour, owners)
+
+	sgowners := []meta.ShardOwner{}
+	for i := 0; i < owners; i++ {
+		sgowners = append(sgowners, meta.ShardOwner{NodeID: uint64(i + 1)})
+	}
+	AttachShardGroupInfo(rp, sgowners)
 
 	ms.RetentionPolicyFn = func(db, retentionPolicy string) (*meta.RetentionPolicyInfo, error) {
 		return rp, nil
@@ -633,4 +629,75 @@ func AttachShardGroupInfo(rp *meta.RetentionPolicyInfo, owners []meta.ShardOwner
 
 func nextShardID() uint64 {
 	return atomic.AddUint64(&shardID, 1)
+}
+
+var sm *coordinator.ShardMapping
+
+func benchmarkMapShards(b *testing.B, points map[string]int) {
+	ms := NewPointsWriterMetaClient(1)
+	c := coordinator.PointsWriter{MetaClient: ms}
+
+	requests := []*coordinator.WritePointsRequest{}
+	for db, n := range points {
+		pr := &coordinator.WritePointsRequest{
+			Database:        db,
+			RetentionPolicy: "rp0",
+		}
+
+		for i := 0; i < n; i++ {
+			pr.AddPoint(fmt.Sprintf("cpu-%s", db), float64(i), time.Now(), nil)
+		}
+		requests = append(requests, pr)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	var err error
+	for i := 0; i < b.N; i++ {
+		for _, wp := range requests {
+			if sm, err = c.MapShards(wp); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+}
+
+func BenchmarkPointsWriter_MapShards_1_1(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 1})
+}
+
+func BenchmarkPointsWriter_MapShards_1_100(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 100})
+}
+
+func BenchmarkPointsWriter_MapShards_1_1000(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 1000})
+}
+
+func BenchmarkPointsWriter_MapShards_1_5000(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 5000})
+}
+
+func BenchmarkPointsWriter_MapShards_1_10000(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 10000})
+}
+
+func BenchmarkPointsWriter_MapShards_5_1(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 1, "db1": 1, "db2": 1, "db3": 1, "db4": 1, "db5": 1})
+}
+
+func BenchmarkPointsWriter_MapShards_5_100(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 100, "db1": 100, "db2": 100, "db3": 100, "db4": 100, "db5": 100})
+}
+
+func BenchmarkPointsWriter_MapShards_5_1000(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 1000, "db1": 1000, "db2": 1000, "db3": 1000, "db4": 1000, "db5": 1000})
+}
+
+func BenchmarkPointsWriter_MapShards_5_5000(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 5000, "db1": 5000, "db2": 5000, "db3": 5000, "db4": 5000, "db5": 5000})
+}
+
+func BenchmarkPointsWriter_MapShards_5_10000(b *testing.B) {
+	benchmarkMapShards(b, map[string]int{"db0": 10000, "db1": 10000, "db2": 10000, "db3": 10000, "db4": 10000, "db5": 10000})
 }
