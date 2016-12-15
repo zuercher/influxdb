@@ -35,7 +35,9 @@ func init() {
 }
 
 // Ensure index implements interface.
-var _ tsdb.Index = &Index{}
+var (
+	_ tsdb.Index = &Index{}
+)
 
 // Index is the in memory index of a collection of measurements, time
 // series, and their tags. Exported functions are goroutine safe while
@@ -48,7 +50,7 @@ type Index struct {
 
 	// In-memory metadata index, built on load and updated when new series come in
 	measurements map[string]*tsdb.Measurement // measurement name to object and index
-	series       map[string]*tsdb.Series      // map series key to the Series object
+	series       map[uint64]*tsdb.Series      // map series key to the Series object
 	lastID       uint64                       // last used series ID. They're in memory only for this shard
 
 	seriesSketch, seriesTSSketch             *hll.Plus
@@ -62,7 +64,7 @@ func NewIndex(id uint64, path string, opt tsdb.EngineOptions) *Index {
 		opt: opt,
 
 		measurements: make(map[string]*tsdb.Measurement),
-		series:       make(map[string]*tsdb.Series),
+		series:       make(map[uint64]*tsdb.Series),
 	}
 
 	index.seriesSketch = hll.MustNewPlus(16)
@@ -78,8 +80,13 @@ func (i *Index) Close() error      { return nil }
 
 // Series returns a series by key.
 func (i *Index) Series(key []byte) (*tsdb.Series, error) {
+	id, ok := tsdb.SeriesMap.Lookup(key)
+	if !ok {
+		return nil, nil
+	}
+
 	i.mu.RLock()
-	s := i.series[string(key)]
+	s := i.series[id]
 	i.mu.RUnlock()
 	return s, nil
 }
@@ -129,9 +136,11 @@ func (i *Index) MeasurementsByName(names [][]byte) ([]*tsdb.Measurement, error) 
 // CreateSeriesIfNotExists adds the series for the given measurement to the
 // index and sets its ID or returns the existing series object
 func (i *Index) CreateSeriesIfNotExists(key, name []byte, tags models.Tags) error {
+	id, _ := tsdb.SeriesMap.Set(key)
+
 	i.mu.RLock()
 	// if there is a measurement for this id, it's already been added
-	ss := i.series[string(key)]
+	ss := i.series[id]
 	if ss != nil {
 		i.mu.RUnlock()
 		return nil
@@ -154,7 +163,7 @@ func (i *Index) CreateSeriesIfNotExists(key, name []byte, tags models.Tags) erro
 
 	i.mu.Lock()
 	// Check for the series again under a write lock
-	ss = i.series[string(key)]
+	ss = i.series[id]
 	if ss != nil {
 		i.mu.Unlock()
 		return nil
@@ -166,7 +175,7 @@ func (i *Index) CreateSeriesIfNotExists(key, name []byte, tags models.Tags) erro
 	i.lastID++
 
 	series.SetMeasurement(m)
-	i.series[string(key)] = series
+	i.series[id] = series
 
 	m.AddSeries(series)
 
@@ -241,10 +250,15 @@ func (i *Index) ForEachMeasurementTagKey(name []byte, fn func(key []byte) error)
 
 // TagsForSeries returns the tag map for the passed in series
 func (i *Index) TagsForSeries(key string) (models.Tags, error) {
+	id, ok := tsdb.SeriesMap.Lookup([]byte(key))
+	if !ok {
+		return nil, nil
+	}
+
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
-	ss := i.series[key]
+	ss := i.series[id]
 	if ss == nil {
 		return nil, nil
 	}
@@ -443,7 +457,7 @@ func (i *Index) dropMeasurement(name string) error {
 
 	delete(i.measurements, name)
 	for _, s := range m.SeriesByIDMap() {
-		delete(i.series, s.Key)
+		delete(i.series, s.ID)
 	}
 	return nil
 }
@@ -466,12 +480,17 @@ func (i *Index) DropSeries(keys [][]byte) error {
 		// Update the tombstone sketch.
 		i.seriesTSSketch.Add(k)
 
-		series := i.series[string(k)]
+		id, ok := tsdb.SeriesMap.Lookup([]byte(k))
+		if !ok {
+			continue
+		}
+
+		series := i.series[id]
 		if series == nil {
 			continue
 		}
 		series.Measurement().DropSeries(series)
-		delete(i.series, string(k))
+		delete(i.series, id)
 		nDeleted++
 
 		// If there are no more series in the measurement then we'll
@@ -536,7 +555,7 @@ func (i *Index) SeriesKeys() []string {
 	i.mu.RLock()
 	s := make([]string, 0, len(i.series))
 	for k := range i.series {
-		s = append(s, k)
+		s = append(s, string(tsdb.SeriesMap.Get(k)))
 	}
 	i.mu.RUnlock()
 	return s

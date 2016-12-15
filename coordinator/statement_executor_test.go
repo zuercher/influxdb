@@ -235,6 +235,9 @@ type TSDBStore struct {
 	DeleteSeriesFn          func(database string, sources []influxql.Source, condition influxql.Expr) error
 	DatabaseIndexFn         func(name string) tsdb.Index
 	ShardIteratorCreatorFn  func(id uint64) influxql.IteratorCreator
+
+	MeasurementNamesFn func(database string, cond influxql.Expr) ([][]byte, error)
+	TagValuesFn        func(database string, cond influxql.Expr) ([]tsdb.TagValues, error)
 }
 
 func (s *TSDBStore) CreateShard(database, policy string, shardID uint64, enabled bool) error {
@@ -305,12 +308,18 @@ func (s *TSDBStore) DatabaseIndex(name string) tsdb.Index {
 	return s.DatabaseIndexFn(name)
 }
 
-func (s *TSDBStore) Measurements(database string, cond influxql.Expr) ([]string, error) {
-	return nil, nil
+func (s *TSDBStore) MeasurementNames(database string, cond influxql.Expr) ([][]byte, error) {
+	if s.MeasurementNamesFn == nil {
+		return nil, nil
+	}
+	return s.MeasurementNamesFn(database, cond)
 }
 
 func (s *TSDBStore) TagValues(database string, cond influxql.Expr) ([]tsdb.TagValues, error) {
-	return nil, nil
+	if s.TagValuesFn == nil {
+		return nil, nil
+	}
+	return s.TagValuesFn(database, cond)
 }
 
 // MustParseQuery parses s into a query. Panic on error.

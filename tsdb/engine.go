@@ -48,6 +48,7 @@ type Engine interface {
 	SeriesSketches() (estimator.Sketch, estimator.Sketch, error)
 	MeasurementsSketches() (estimator.Sketch, estimator.Sketch, error)
 
+	Measurement(name []byte) (*Measurement, error)
 	MeasurementNamesByExpr(expr influxql.Expr) ([][]byte, error)
 	MeasurementNamesByRegex(re *regexp.Regexp) ([][]byte, error)
 	MeasurementFields(measurement string) *MeasurementFields

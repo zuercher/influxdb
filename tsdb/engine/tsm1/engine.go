@@ -861,6 +861,10 @@ func (e *Engine) CreateSeriesIfNotExists(key, name []byte, tags models.Tags) err
 	return e.index.CreateSeriesIfNotExists(key, name, tags)
 }
 
+func (e *Engine) Measurement(name []byte) (*tsdb.Measurement, error) {
+	return e.index.Measurement(name)
+}
+
 func (e *Engine) WriteTo(w io.Writer) (n int64, err error) { panic("not implemented") }
 
 // WriteSnapshot will snapshot the cache and write a new TSM file with its contents, releasing the snapshot when done.

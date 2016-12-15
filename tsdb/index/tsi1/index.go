@@ -194,7 +194,6 @@ func (i *Index) measurement(name []byte) *tsdb.Measurement {
 		// TODO: Remove concept of series ids.
 		m.AddSeries(&tsdb.Series{
 			ID:   id,
-			Key:  string(e.Name()),
 			Tags: models.CopyTags(e.Tags()),
 		})
 
