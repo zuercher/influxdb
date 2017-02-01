@@ -1242,8 +1242,6 @@ func (e *Engine) cleanupTempTSMFiles() error {
 
 // KeyCursor returns a KeyCursor for the given key starting at time t.
 func (e *Engine) KeyCursor(key string, t int64, ascending bool) *KeyCursor {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
 	return e.FileStore.KeyCursor(key, t, ascending)
 }
 
