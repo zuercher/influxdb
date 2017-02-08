@@ -63,6 +63,7 @@ The admin UI is removed and unusable in this release. The `[admin]` configuratio
 - [#8343](https://github.com/influxdata/influxdb/issues/8343): Set the CSV output to an empty string for null values.
 - [#8368](https://github.com/influxdata/influxdb/issues/8368): Compaction exhausting disk resources in InfluxDB
 - [#8358](https://github.com/influxdata/influxdb/issues/8358): Small edits to the etc/config.sample.toml file.
+- [#7957](https://github.com/influxdata/influxdb/issues/7957): URL query parameter credentials take priority over Authentication header.
 
 ## v1.2.3 [unreleased]
 
