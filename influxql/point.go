@@ -222,21 +222,21 @@ func encodeAux(aux []interface{}) []*internal.Aux {
 	for i := range aux {
 		switch v := aux[i].(type) {
 		case float64:
-			pb[i] = &internal.Aux{DataType: proto.Int32(Float), FloatValue: proto.Float64(v)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Float)), FloatValue: proto.Float64(v)}
 		case *float64:
-			pb[i] = &internal.Aux{DataType: proto.Int32(Float)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Float))}
 		case int64:
-			pb[i] = &internal.Aux{DataType: proto.Int32(Integer), IntegerValue: proto.Int64(v)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Integer)), IntegerValue: proto.Int64(v)}
 		case *int64:
-			pb[i] = &internal.Aux{DataType: proto.Int32(Integer)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Integer))}
 		case string:
-			pb[i] = &internal.Aux{DataType: proto.Int32(String), StringValue: proto.String(v)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(String)), StringValue: proto.String(v)}
 		case *string:
-			pb[i] = &internal.Aux{DataType: proto.Int32(String)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(String))}
 		case bool:
-			pb[i] = &internal.Aux{DataType: proto.Int32(Boolean), BooleanValue: proto.Bool(v)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Boolean)), BooleanValue: proto.Bool(v)}
 		case *bool:
-			pb[i] = &internal.Aux{DataType: proto.Int32(Boolean)}
+			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Boolean))}
 		default:
 			pb[i] = &internal.Aux{DataType: proto.Int32(int32(Unknown))}
 		}
@@ -251,7 +251,7 @@ func decodeAux(pb []*internal.Aux) []interface{} {
 
 	aux := make([]interface{}, len(pb))
 	for i := range pb {
-		switch pb[i].GetDataType() {
+		switch DataType(pb[i].GetDataType()) {
 		case Float:
 			if pb[i].FloatValue != nil {
 				aux[i] = *pb[i].FloatValue
