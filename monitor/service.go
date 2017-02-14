@@ -191,7 +191,7 @@ func (m *Monitor) RegisterDiagnosticsClient(name string, client diagnostics.Clie
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.diagRegistrations[name] = client
-	m.Logger.Info(fmt.Sprintf(`'%s' registered for diagnostics monitoring`, name))
+	m.Logger.Info("registered for diagnostics monitoring", zap.String("name", name))
 }
 
 // DeregisterDiagnosticsClient deregisters a diagnostics client by name.
