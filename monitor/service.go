@@ -221,8 +221,11 @@ func (m *Monitor) Statistics(tags map[string]string) ([]*Statistic, error) {
 			statistic.Tags[k] = v
 		}
 
-		// Every other top-level expvar value is a map.
-		m := kv.Value.(*expvar.Map)
+		// Every other top-level expvar value should be a map.
+		m, ok := kv.Value.(*expvar.Map)
+		if !ok {
+			return
+		}
 
 		m.Do(func(subKV expvar.KeyValue) {
 			switch subKV.Key {

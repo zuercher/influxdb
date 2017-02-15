@@ -341,6 +341,10 @@ func TestMonitor_Expvar(t *testing.T) {
 		},
 	))
 
+	bad := new(expvar.String)
+	bad.Set("badentry")
+	expvar.Publish("expvar4", bad)
+
 	if err := s.Open(); err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
