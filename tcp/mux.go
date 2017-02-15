@@ -203,8 +203,20 @@ func (ln *listener) Accept() (c net.Conn, err error) {
 	return conn, nil
 }
 
-// Close is a no-op. The mux's listener should be closed instead.
-func (ln *listener) Close() error { return nil }
+// Close removes this listener from the parent mux and closes the channel.
+func (ln *listener) Close() error {
+	ln.mux.mu.Lock()
+	defer ln.mux.mu.Unlock()
+
+	for b, l := range ln.mux.m {
+		if l == ln {
+			delete(ln.mux.m, b)
+			close(ln.c)
+			return nil
+		}
+	}
+	return nil
+}
 
 // Addr returns the Addr of the listener
 func (ln *listener) Addr() net.Addr {

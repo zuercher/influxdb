@@ -198,7 +198,7 @@ func (s *Service) writeDatabaseInfo(conn net.Conn, database string) error {
 	}
 
 	if err := json.NewEncoder(conn).Encode(res); err != nil {
-		return fmt.Errorf("encode resonse: %s", err.Error())
+		return fmt.Errorf("encode response: %s", err.Error())
 	}
 
 	return nil
