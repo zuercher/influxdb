@@ -315,8 +315,10 @@ func (m *Monitor) gatherStatistics(statistics []*Statistic, tags map[string]stri
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	for _, s := range m.reporter.Statistics(tags) {
-		statistics = append(statistics, &Statistic{Statistic: s})
+	if m.reporter != nil {
+		for _, s := range m.reporter.Statistics(tags) {
+			statistics = append(statistics, &Statistic{Statistic: s})
+		}
 	}
 	return statistics
 }

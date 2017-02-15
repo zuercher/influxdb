@@ -1,8 +1,15 @@
 package monitor_test
 
 import (
+	"expvar"
+	"fmt"
+	"os"
+	"reflect"
+	"sort"
 	"testing"
 	"time"
+
+	"go.uber.org/zap/spy"
 
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/monitor"
@@ -32,11 +39,61 @@ func TestMonitor_Open(t *testing.T) {
 	}
 }
 
-func TestMonitor_StoreStatistics(t *testing.T) {
-	reporter := ReporterFunc(func(tags map[string]string) []models.Statistic {
-		return []models.Statistic{}
-	})
+func TestMonitor_SetPointsWriter_StoreEnabled(t *testing.T) {
+	var mc MetaClient
+	mc.CreateDatabaseWithRetentionPolicyFn = func(name string, spec *meta.RetentionPolicySpec) (*meta.DatabaseInfo, error) {
+		return &meta.DatabaseInfo{Name: name}, nil
+	}
 
+	config := monitor.NewConfig()
+	s := monitor.New(nil, config)
+	s.MetaClient = &mc
+	log, sink := spy.New()
+	s.WithLogger(log)
+
+	// Setting the points writer should open the monitor.
+	var pw PointsWriter
+	if err := s.SetPointsWriter(&pw); err != nil {
+		t.Fatalf("unexpected open error: %s", err)
+	}
+	defer s.Close()
+
+	// Verify that the monitor was opened by looking at the log messages.
+	found := false
+	for _, log := range sink.Logs() {
+		if log.Msg == "Starting monitor system" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("monitor system was never started")
+	}
+}
+
+func TestMonitor_SetPointsWriter_StoreDisabled(t *testing.T) {
+	s := monitor.New(nil, monitor.Config{})
+	log, sink := spy.New()
+	s.WithLogger(log)
+
+	// Setting the points writer should open the monitor.
+	var pw PointsWriter
+	if err := s.SetPointsWriter(&pw); err != nil {
+		t.Fatalf("unexpected open error: %s", err)
+	}
+	defer s.Close()
+
+	// Verify that the monitor was opened by looking at the log messages.
+	for _, log := range sink.Logs() {
+		if log.Msg == "Starting monitor system" {
+			t.Errorf("monitor system should not have been started")
+			break
+		}
+	}
+}
+
+func TestMonitor_StoreStatistics(t *testing.T) {
 	done := make(chan struct{})
 	defer close(done)
 	ch := make(chan models.Points)
@@ -86,6 +143,81 @@ func TestMonitor_StoreStatistics(t *testing.T) {
 
 	config := monitor.NewConfig()
 	config.StoreInterval = toml.Duration(10 * time.Millisecond)
+	s := monitor.New(nil, config)
+	s.MetaClient = &mc
+	s.PointsWriter = &pw
+
+	if err := s.Open(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	defer s.Close()
+
+	timer := time.NewTimer(100 * time.Millisecond)
+	select {
+	case points := <-ch:
+		timer.Stop()
+
+		// Search for the runtime statistic.
+		found := false
+		for _, pt := range points {
+			if pt.Name() != "runtime" {
+				continue
+			}
+
+			// There should be a hostname.
+			if got := pt.Tags().GetString("hostname"); len(got) == 0 {
+				t.Errorf("expected hostname tag")
+			}
+			// This should write on an exact interval of 10 milliseconds.
+			if got, want := pt.Time(), pt.Time().Truncate(10*time.Millisecond); got != want {
+				t.Errorf("unexpected time: got=%q want=%q", got, want)
+			}
+			found = true
+			break
+		}
+
+		if !found {
+			t.Error("unable to find runtime statistic")
+		}
+	case <-timer.C:
+		t.Errorf("timeout while waiting for statistics to be written")
+	}
+}
+
+func TestMonitor_Reporter(t *testing.T) {
+	reporter := ReporterFunc(func(tags map[string]string) []models.Statistic {
+		return []models.Statistic{
+			{
+				Name: "foo",
+				Tags: tags,
+				Values: map[string]interface{}{
+					"value": "bar",
+				},
+			},
+		}
+	})
+
+	done := make(chan struct{})
+	defer close(done)
+	ch := make(chan models.Points)
+
+	var mc MetaClient
+	mc.CreateDatabaseWithRetentionPolicyFn = func(name string, spec *meta.RetentionPolicySpec) (*meta.DatabaseInfo, error) {
+		return &meta.DatabaseInfo{Name: name}, nil
+	}
+
+	var pw PointsWriter
+	pw.WritePointsFn = func(database, policy string, points models.Points) error {
+		// Attempt to write the points to the main goroutine.
+		select {
+		case <-done:
+		case ch <- points:
+		}
+		return nil
+	}
+
+	config := monitor.NewConfig()
+	config.StoreInterval = toml.Duration(10 * time.Millisecond)
 	s := monitor.New(reporter, config)
 	s.MetaClient = &mc
 	s.PointsWriter = &pw
@@ -99,24 +231,223 @@ func TestMonitor_StoreStatistics(t *testing.T) {
 	select {
 	case points := <-ch:
 		timer.Stop()
-		if got, want := points.Len(), 1; got != want {
-			t.Errorf("unexpected number of points: got=%v want=%v", got, want)
-		} else {
-			p := points[0]
-			if got, want := p.Name(), "runtime"; got != want {
-				t.Errorf("unexpected point name: got=%q want=%q", got, want)
+
+		// Look for the statistic.
+		found := false
+		for _, pt := range points {
+			if pt.Name() != "foo" {
+				continue
 			}
-			// There should be a hostname.
-			if got := p.Tags().GetString("hostname"); len(got) == 0 {
-				t.Errorf("expected hostname tag")
-			}
-			// This should write on an exact interval of 10 milliseconds.
-			if got, want := p.Time(), p.Time().Truncate(10*time.Millisecond); got != want {
-				t.Errorf("unexpected time: got=%q want=%q", got, want)
-			}
+			found = true
+			break
+		}
+
+		if !found {
+			t.Error("unable to find foo statistic")
 		}
 	case <-timer.C:
 		t.Errorf("timeout while waiting for statistics to be written")
+	}
+}
+
+func expvarMap(name string, tags map[string]string, fields map[string]interface{}) *expvar.Map {
+	m := new(expvar.Map).Init()
+	eName := new(expvar.String)
+	eName.Set(name)
+	m.Set("name", eName)
+
+	var eTags *expvar.Map
+	if len(tags) > 0 {
+		eTags = new(expvar.Map).Init()
+		for k, v := range tags {
+			kv := new(expvar.String)
+			kv.Set(v)
+			eTags.Set(k, kv)
+		}
+		m.Set("tags", eTags)
+	}
+
+	var eFields *expvar.Map
+	if len(fields) > 0 {
+		eFields = new(expvar.Map).Init()
+		for k, v := range fields {
+			switch v := v.(type) {
+			case float64:
+				kv := new(expvar.Float)
+				kv.Set(v)
+				eFields.Set(k, kv)
+			case int:
+				kv := new(expvar.Int)
+				kv.Set(int64(v))
+				eFields.Set(k, kv)
+			case string:
+				kv := new(expvar.String)
+				kv.Set(v)
+				eFields.Set(k, kv)
+			}
+		}
+		m.Set("values", eFields)
+	}
+	return m
+}
+
+func TestMonitor_Expvar(t *testing.T) {
+	done := make(chan struct{})
+	defer close(done)
+	ch := make(chan models.Points)
+
+	var mc MetaClient
+	mc.CreateDatabaseWithRetentionPolicyFn = func(name string, spec *meta.RetentionPolicySpec) (*meta.DatabaseInfo, error) {
+		return &meta.DatabaseInfo{Name: name}, nil
+	}
+
+	var pw PointsWriter
+	pw.WritePointsFn = func(database, policy string, points models.Points) error {
+		// Attempt to write the points to the main goroutine.
+		select {
+		case <-done:
+		case ch <- points:
+		}
+		return nil
+	}
+
+	config := monitor.NewConfig()
+	config.StoreInterval = toml.Duration(10 * time.Millisecond)
+	s := monitor.New(nil, config)
+	s.MetaClient = &mc
+	s.PointsWriter = &pw
+
+	expvar.Publish("expvar1", expvarMap(
+		"expvar1",
+		map[string]string{
+			"region": "uswest2",
+		},
+		map[string]interface{}{
+			"value": 2.0,
+		},
+	))
+	expvar.Publish("expvar2", expvarMap(
+		"expvar2",
+		map[string]string{
+			"region": "uswest2",
+		},
+		nil,
+	))
+	expvar.Publish("expvar3", expvarMap(
+		"expvar3",
+		nil,
+		map[string]interface{}{
+			"value": 2,
+		},
+	))
+
+	if err := s.Open(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	defer s.Close()
+
+	hostname, _ := os.Hostname()
+	timer := time.NewTimer(100 * time.Millisecond)
+	select {
+	case points := <-ch:
+		timer.Stop()
+
+		// Look for the statistic.
+		var found1, found3 bool
+		for _, pt := range points {
+			switch pt.Name() {
+			case "expvar1":
+				if got, want := pt.Tags().HashKey(), []byte(fmt.Sprintf(",hostname=%s,region=uswest2", hostname)); !reflect.DeepEqual(got, want) {
+					t.Errorf("unexpected expvar1 tags: got=%v want=%v", string(got), string(want))
+				}
+				fields, _ := pt.Fields()
+				if got, want := fields, models.Fields(map[string]interface{}{
+					"value": 2.0,
+				}); !reflect.DeepEqual(got, want) {
+					t.Errorf("unexpected expvar1 fields: got=%v want=%v", got, want)
+				}
+				found1 = true
+			case "expvar2":
+				t.Error("found expvar2 statistic")
+			case "expvar3":
+				if got, want := pt.Tags().HashKey(), []byte(fmt.Sprintf(",hostname=%s", hostname)); !reflect.DeepEqual(got, want) {
+					t.Errorf("unexpected expvar3 tags: got=%v want=%v", string(got), string(want))
+				}
+				fields, _ := pt.Fields()
+				if got, want := fields, models.Fields(map[string]interface{}{
+					"value": int64(2),
+				}); !reflect.DeepEqual(got, want) {
+					t.Errorf("unexpected expvar3 fields: got=%v want=%v", got, want)
+				}
+				found3 = true
+			}
+		}
+
+		if !found1 {
+			t.Error("unable to find expvar1 statistic")
+		}
+		if !found3 {
+			t.Error("unable to find expvar3 statistic")
+		}
+	case <-timer.C:
+		t.Errorf("timeout while waiting for statistics to be written")
+	}
+}
+
+func TestMonitor_QuickClose(t *testing.T) {
+	var mc MetaClient
+	mc.CreateDatabaseWithRetentionPolicyFn = func(name string, spec *meta.RetentionPolicySpec) (*meta.DatabaseInfo, error) {
+		return &meta.DatabaseInfo{Name: name}, nil
+	}
+
+	var pw PointsWriter
+	config := monitor.NewConfig()
+	config.StoreInterval = toml.Duration(24 * time.Hour)
+	s := monitor.New(nil, config)
+	s.MetaClient = &mc
+	s.PointsWriter = &pw
+
+	if err := s.Open(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+func TestStatistic_ValueNames(t *testing.T) {
+	statistic := monitor.Statistic{
+		Statistic: models.Statistic{
+			Name: "foo",
+			Values: map[string]interface{}{
+				"abc": 1.0,
+				"def": 2.0,
+			},
+		},
+	}
+
+	names := statistic.ValueNames()
+	if got, want := names, []string{"abc", "def"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("unexpected value names: got=%v want=%v", got, want)
+	}
+}
+
+func TestStatistics_Sort(t *testing.T) {
+	statistics := []*monitor.Statistic{
+		{Statistic: models.Statistic{Name: "b"}},
+		{Statistic: models.Statistic{Name: "a"}},
+		{Statistic: models.Statistic{Name: "c"}},
+	}
+
+	sort.Sort(monitor.Statistics(statistics))
+	names := make([]string, 0, len(statistics))
+	for _, stat := range statistics {
+		names = append(names, stat.Name)
+	}
+
+	if got, want := names, []string{"a", "b", "c"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("incorrect sorting of statistics: got=%v want=%v", got, want)
 	}
 }
 
@@ -131,7 +462,10 @@ type PointsWriter struct {
 }
 
 func (pw *PointsWriter) WritePoints(database, policy string, points models.Points) error {
-	return pw.WritePointsFn(database, policy, points)
+	if pw.WritePointsFn != nil {
+		return pw.WritePointsFn(database, policy, points)
+	}
+	return nil
 }
 
 type MetaClient struct {
