@@ -186,6 +186,8 @@ func TestSnapshotter_RequestDatabaseInfo(t *testing.T) {
 		if id != 2 && id != 4 {
 			t.Errorf("unexpected shard id: %d", id)
 			return nil
+		} else if id == 4 {
+			return nil
 		}
 		return &tsdb.Shard{}
 	}
@@ -193,7 +195,7 @@ func TestSnapshotter_RequestDatabaseInfo(t *testing.T) {
 		if id == 2 {
 			return "db0/rp0", nil
 		} else if id == 4 {
-			return "db0/autogen", nil
+			t.Errorf("unexpected relative path request for shard id: %d", id)
 		}
 		return "", fmt.Errorf("no such shard id: %d", id)
 	}
@@ -237,8 +239,52 @@ func TestSnapshotter_RequestDatabaseInfo(t *testing.T) {
 		return
 	}
 
-	if got, want := resp.Paths, []string{"db0/rp0", "db0/autogen"}; !reflect.DeepEqual(got, want) {
+	if got, want := resp.Paths, []string{"db0/rp0"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("unexpected paths: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestSnapshotter_RequestDatabaseInfo_ErrDatabaseNotFound(t *testing.T) {
+	s, l, err := NewTestService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	s.MetaClient = &MetaClient{Data: data}
+	if err := s.Open(); err != nil {
+		t.Fatalf("unexpected open error: %s", err)
+	}
+	defer s.Close()
+
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+		return
+	}
+	defer conn.Close()
+
+	req := snapshotter.Request{
+		Type:     snapshotter.RequestDatabaseInfo,
+		Database: "doesnotexist",
+	}
+	conn.Write([]byte{snapshotter.MuxHeader})
+	enc := json.NewEncoder(conn)
+	if err := enc.Encode(&req); err != nil {
+		t.Errorf("unable to encode request: %s", err)
+		return
+	}
+
+	// Read the result.
+	out, err := ioutil.ReadAll(conn)
+	if err != nil {
+		t.Errorf("unexpected error reading database info: %s", err)
+		return
+	}
+
+	// There should be no response.
+	if got, want := string(out), ""; got != want {
+		t.Errorf("expected no message, got: %s", got)
 	}
 }
 
@@ -306,6 +352,41 @@ func TestSnapshotter_RequestRetentionPolicyInfo(t *testing.T) {
 
 	if got, want := resp.Paths, []string{"db0/rp0"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("unexpected paths: got=%#v want=%#v", got, want)
+	}
+}
+
+func TestSnapshotter_InvalidRequest(t *testing.T) {
+	s, l, err := NewTestService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+
+	if err := s.Open(); err != nil {
+		t.Fatalf("unexpected open error: %s", err)
+	}
+	defer s.Close()
+
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+		return
+	}
+	defer conn.Close()
+
+	conn.Write([]byte{snapshotter.MuxHeader})
+	conn.Write([]byte(`["invalid request"]`))
+
+	// Read the result.
+	out, err := ioutil.ReadAll(conn)
+	if err != nil {
+		t.Errorf("unexpected error reading database info: %s", err)
+		return
+	}
+
+	// There should be no response.
+	if got, want := string(out), ""; got != want {
+		t.Errorf("expected no message, got: %s", got)
 	}
 }
 
