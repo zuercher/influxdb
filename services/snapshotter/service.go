@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -39,7 +40,11 @@ type Service struct {
 		Database(name string) *meta.DatabaseInfo
 	}
 
-	TSDBStore *tsdb.Store
+	TSDBStore interface {
+		BackupShard(id uint64, since time.Time, w io.Writer) error
+		Shard(id uint64) *tsdb.Shard
+		ShardRelativePath(id uint64) (string, error)
+	}
 
 	Listener net.Listener
 	Logger   zap.Logger

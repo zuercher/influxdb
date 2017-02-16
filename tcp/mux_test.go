@@ -154,3 +154,37 @@ func TestMux_Listen_ErrAlreadyRegistered(t *testing.T) {
 	mux.Listen(5)
 	mux.Listen(5)
 }
+
+// Ensure that closing a listener from mux.Listen releases an Accept call and
+// deregisters the mux.
+func TestMux_Close(t *testing.T) {
+	mux := tcp.NewMux()
+	l := mux.Listen(5)
+
+	closed := make(chan struct{})
+	go func() {
+		_, err := l.Accept()
+		if err == nil || !strings.Contains(err.Error(), "connection closed") {
+			t.Errorf("unexpected error: %s", err)
+		}
+		close(closed)
+	}()
+	l.Close()
+
+	timer := time.NewTimer(100 * time.Millisecond)
+	select {
+	case <-closed:
+		timer.Stop()
+	case <-timer.C:
+		t.Errorf("timeout while waiting for the mux to close")
+	}
+
+	// We should now be able to register a new listener at the same byte
+	// without causing a panic.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("unexpected recover: %#v", r)
+		}
+	}()
+	mux.Listen(5)
+}
