@@ -30,8 +30,7 @@ const (
 
 // Service manages the listener for the snapshot endpoint.
 type Service struct {
-	wg  sync.WaitGroup
-	err chan error
+	wg sync.WaitGroup
 
 	Node *influxdb.Node
 
@@ -53,7 +52,6 @@ type Service struct {
 // NewService returns a new instance of Service.
 func NewService() *Service {
 	return &Service{
-		err:    make(chan error),
 		Logger: zap.New(zap.NullEncoder()),
 	}
 }
@@ -80,9 +78,6 @@ func (s *Service) Close() error {
 func (s *Service) WithLogger(log zap.Logger) {
 	s.Logger = log.With(zap.String("service", "snapshot"))
 }
-
-// Err returns a channel for fatal out-of-band errors.
-func (s *Service) Err() <-chan error { return s.err }
 
 // serve serves snapshot requests from the listener.
 func (s *Service) serve() {
