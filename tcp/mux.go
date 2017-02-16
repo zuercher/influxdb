@@ -81,9 +81,13 @@ func (mux *Mux) Serve(ln net.Listener) error {
 		if err != nil {
 			// Wait for all connections to be demux
 			mux.wg.Wait()
+
+			mux.mu.Lock()
 			for _, ln := range mux.m {
 				close(ln.c)
 			}
+			mux.m = nil
+			mux.mu.Unlock()
 
 			if mux.defaultListener != nil {
 				close(mux.defaultListener.c)
@@ -212,7 +216,7 @@ func (ln *listener) Close() error {
 		if l == ln {
 			delete(ln.mux.m, b)
 			close(ln.c)
-			return nil
+			break
 		}
 	}
 	return nil
