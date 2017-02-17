@@ -317,11 +317,7 @@ func (s *Server) appendPrecreatorService(c precreator.Config) error {
 	if !c.Enabled {
 		return nil
 	}
-	srv, err := precreator.NewService(c)
-	if err != nil {
-		return err
-	}
-
+	srv := precreator.NewService(c)
 	srv.MetaClient = s.MetaClient
 	s.Services = append(s.Services, srv)
 	return nil
