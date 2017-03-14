@@ -7,6 +7,7 @@
 - [#7948](https://github.com/influxdata/influxdb/pull/7948): Reduce memory allocations by reusing gzip.Writers across requests
 - [#7776](https://github.com/influxdata/influxdb/issues/7776): Add system information to /debug/vars.
 - [#7553](https://github.com/influxdata/influxdb/issues/7553): Add modulo operator to the query language.
+- [#8124](https://github.com/influxdata/influxdb/issues/8124): Prevent privileges on non-existent databases from being set.
 
 ## v1.2.1 [2017-03-08]
 
