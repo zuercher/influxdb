@@ -268,9 +268,9 @@ func (d *DatabaseIndex) RemoveShard(shardID uint64) {
 // TagsForSeries returns the tag map for the passed in series
 func (d *DatabaseIndex) TagsForSeries(key string) models.Tags {
 	d.mu.RLock()
-	defer d.mu.RUnlock()
-
 	ss := d.series[key]
+	d.mu.RUnlock()
+
 	if ss == nil {
 		return nil
 	}
