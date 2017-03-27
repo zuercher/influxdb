@@ -729,6 +729,7 @@ func TestParsePointWhitespace(t *testing.T) {
 `,
 		`cpu   value=1.0 1257894000000000000
 `,
+		"cpu\x00value=1.0\x001257894000000000000",
 	}
 
 	expPoint := NewTestPoint("cpu", models.Tags{}, models.Fields{"value": 1.0}, time.Unix(0, 1257894000000000000))

@@ -509,8 +509,8 @@ func scanMeasurement(buf []byte, i int) (int, int, error) {
 			return -1, i, fmt.Errorf("missing fields")
 		}
 
-		if buf[i-1] == '\\' {
-			// Skip character (it's escaped).
+		if buf[i-1] == '\\' && buf[i] != 0 {
+			// Skip character (it's escaped). You cannot escape the null byte.
 			continue
 		}
 
@@ -520,7 +520,7 @@ func scanMeasurement(buf []byte, i int) (int, int, error) {
 		}
 
 		// Unescaped space; move onto scanning the fields.
-		if buf[i] == ' ' {
+		if buf[i] == ' ' || buf[i] == 0 {
 			// cpu value=1.0
 			return fieldsState, i, nil
 		}
@@ -567,7 +567,7 @@ func scanTags(buf []byte, i int, indices []int) (int, int, []int, error) {
 // scanTagsKey scans each character in a tag key.
 func scanTagsKey(buf []byte, i int) (int, error) {
 	// First character of the key.
-	if i >= len(buf) || buf[i] == ' ' || buf[i] == ',' || buf[i] == '=' {
+	if i >= len(buf) || buf[i] == ' ' || buf[i] == ',' || buf[i] == '=' || buf[i] == 0 {
 		// cpu,{'', ' ', ',', '='}
 		return i, fmt.Errorf("missing tag key")
 	}
@@ -580,7 +580,7 @@ func scanTagsKey(buf []byte, i int) (int, error) {
 
 		// Either we reached the end of the buffer or we hit an
 		// unescaped comma or space.
-		if i >= len(buf) ||
+		if i >= len(buf) || buf[i] == 0 ||
 			((buf[i] == ' ' || buf[i] == ',') && buf[i-1] != '\\') {
 			// cpu,tag{'', ' ', ','}
 			return i, fmt.Errorf("missing tag value")
@@ -596,7 +596,7 @@ func scanTagsKey(buf []byte, i int) (int, error) {
 // scanTagsValue scans each character in a tag value.
 func scanTagsValue(buf []byte, i int) (int, int, error) {
 	// Tag value cannot be empty.
-	if i >= len(buf) || buf[i] == ',' || buf[i] == ' ' {
+	if i >= len(buf) || buf[i] == ',' || buf[i] == ' ' || buf[i] == 0 {
 		// cpu,tag={',', ' '}
 		return -1, i, fmt.Errorf("missing tag value")
 	}
@@ -624,7 +624,7 @@ func scanTagsValue(buf []byte, i int) (int, int, error) {
 
 		// cpu,tag=foo value=1.0
 		// cpu, tag=foo\= value=1.0
-		if buf[i] == ' ' && buf[i-1] != '\\' {
+		if (buf[i] == ' ' && buf[i-1] != '\\') || buf[i] == 0 {
 			return fieldsState, i, nil
 		}
 	}
@@ -666,6 +666,10 @@ func scanFields(buf []byte, i int) (int, []byte, error) {
 
 		// escaped characters?
 		if buf[i] == '\\' && i+1 < len(buf) {
+			// Null bytes can't be escaped.
+			if buf[i+1] == '\x00' {
+				return i + 1, buf[start : i+1], nil
+			}
 			i += 2
 			continue
 		}
@@ -679,7 +683,7 @@ func scanFields(buf []byte, i int) (int, []byte, error) {
 			continue
 		}
 
-		// If we see an =, ensure that there is at least on char before and after it
+		// If we see an =, ensure that there is at least one char before and after it
 		if buf[i] == '=' && !quoted {
 			equals++
 
@@ -727,7 +731,7 @@ func scanFields(buf []byte, i int) (int, []byte, error) {
 		}
 
 		// reached end of block?
-		if buf[i] == ' ' && !quoted {
+		if (buf[i] == ' ' || buf[i] == 0) && !quoted {
 			break
 		}
 		i++
@@ -759,7 +763,7 @@ func scanTime(buf []byte, i int) (int, []byte, error) {
 		}
 
 		// Reached end of block or trailing whitespace?
-		if buf[i] == '\n' || buf[i] == ' ' {
+		if buf[i] == '\n' || buf[i] == ' ' || buf[i] == 0 {
 			break
 		}
 
@@ -810,7 +814,7 @@ func scanNumber(buf []byte, i int) (int, error) {
 			break
 		}
 
-		if buf[i] == ',' || buf[i] == ' ' {
+		if buf[i] == ',' || buf[i] == ' ' || buf[i] == 0 {
 			break
 		}
 
