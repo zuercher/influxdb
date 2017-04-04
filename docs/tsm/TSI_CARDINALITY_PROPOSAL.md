@@ -1,10 +1,10 @@
 # TSM Series Cardinality Estimation Proposal
 
-This document describes a proposal for providing future cardinality readings of series and measurement data in a database.
+This document describes a proposal for providing estimating the series and measurement cardinalities within a single database.
 
-The existing approach of counting distinct series and measurement data will not scale to billions of series in a database, and regardless would be complicated by implementation of the new TSI proposal (#7174).
+The existing approach of counting distinct series and measurement data in a database's index will not scale to the hundreds or millions or even billions of series we wish to be able to support, and regardless would be complicated by implementation of the new TSI proposal (#7174).
 
-The rest of the proposal provides more background and a proposed approach for providing scalable cardinality readings.
+The rest of the proposal provides more background and a proposed approach for providing scalable cardinality estimations.
 
 ## Background
 
@@ -17,9 +17,9 @@ The in-memory shared indices would be replaced with these m-mapped time-series i
 In the current shared in-memory index, we calculate the series and measurement cardinality for a database, by counting the number of distinct series and measurements, which only involves a single index, since all series and measurement data is held within the same shared index across shards.
 However, with the new proposed approach, each shard would have a separate index, and with potentially different series and measurement values in it for a given database.
 
-Therefore, we need to come up with a solution that gets cardinality readings for a database where:
+Therefore, we need to come up with a solution that measures cardinality for a database where:
 
- - We have billions of series values in the database; and
+ - We have potentially billions of series values in the database; and
  - Series and measurement values are distributed across multiple indices.
 
 The solution must not:
@@ -33,10 +33,10 @@ The solution must not:
 
 The number of distinct series or measurements could be counted exactly by scanning all series/measurements in all indices relating to a database.
 This could be achieved using a merge-type approach, where sorted streams of series/measurements are scanned in parallel and a counter is updated as distinct values are discovered.
-It would not require significant memory because only the largest value seen so far, and the count would need to be stored.
+It would not require significant memory because only the largest value seen so far, and the count, would need to be stored.
 
 However, this solution is completely unscalable because as soon as a series/measurement has been added or removed to the database, the entire calculation would need to be done again.
-Further, to calculate the value all values need to be sent across a network, if indices are located on different hosts.
+Further, to calculate the value in a clustered environment, all values need to be sent across a network, if indices are located on different hosts.
 
 
 ##### Probabilistic Cardinality Estimation
@@ -67,7 +67,7 @@ where `M` is related to the size of the sketch used to store frequencies of cert
 In practice, `M` is typically in the range `1536–24576`, and so the accuracy is typically in the range `2.6%–0.65%`.
 A lower error rate demands more memory to accommodate a bigger sketch, but in practice the space requirements are trivial (using the above ranges would result in disk requirements of `~256B - ~4KB` for the sketch).
 
-To build a sketch, each value is hashed and the binary encoding of the hashed value is examined, to determine where in the sketch a counter should be incremented.
+To build a sketch each value is hashed and the binary encoding of the hashed value is examined, which helps determine where in the sketch a counter should be incremented.
 The computational requirements for building a sketch are linear to the size of the input since every value needs to be examined once, however, this process can be carried out in parallel because the operations necessary to build a sketch are commutative.
 
 Sketches only need to be built once for each index; they can then be persisted, and consulted when a cardinality estimation needs to be made.
@@ -81,7 +81,7 @@ Combining sketches to generate estimations is also _lossless_: that is, the accu
 
 This section gives a broad overview of how we might implement cardinality estimation.
 
-On system startup we would need to consult each TSI index and extract the sketches contained in each one, storing them in the associated Shard types in the database.
+On system startup we would need to consult each TSI index and extract the sketches contained in each one, storing them in the associated `Shard` types in the database.
 Since the sketches are small, this should be quick to do.
 Each TSI file contains the following sketches:
 
@@ -91,17 +91,17 @@ Each TSI file contains the following sketches:
  - Tombstoned measurements sketch
 
 We would also need to scan all WAL files and, for each WAL file, update the sketches associated with the index.
+WAL files contain no persistent sketches.
 Any series or measurements in the WAL files would be added to the series and measurement sketches, and any tombstoned series or measurement entries would be added to the tombstoned sketches.
-The end result would be four in-memory sketches for each shard.
 Persistent sketches in the TSI files would only be updated during compactions.
+Logically each shard will contain four sketches, but in practice each shard will contain a set of four sketches for every TSI file and WAL file belonging to the shard.
 
 ##### Building an index sketch
 
-When a new TSI file is created as the result of a full compaction, a new sketches will be generated for both the series and measurements within the index.
+When a new TSI file is created as the result of a full compaction, a new sketch will be generated for both the series and measurements within the index.
 This will involve scanning and hashing with a 64-bit hash function, every series and measurement value within the index.
-A suitable hash function for this purpose would be [MurmurHash3][4], which is optimised to generate 128-bit hash values on 64-bit architectures (we can use the first 64 bits for the series/measurement hash).
+A suitable hash function for this purpose would be [xxhash][4].
 Each hashed value will then contribute to the appropriate sketch.
-Finally, the tombstone sketches will be reinitialised as empty sketches, since there will no longer be any tombstone entries in the index.
 
 Some prototyping and testing may be needed, but I would suggest a starting point for the precision of the HLL++ sketch to be `14`, which will require a sketch size of around `16KB`.
 
@@ -118,120 +118,101 @@ Calculating cardinality estimates will be a three step process, for example in t
  - 2. Combine all tombstone series sketches and generate a `tombstone_series_estimate`;
  - 3. Return `series_estimate - tombstone_series_estimate`.
 
-If appropriate, we could maintain in memory the combined result sketches to avoid combining them across shards for each cardinality estimate.
-
 ##### Adding new series and measurements
 
 Since TSI indices are immutable, we should not modify an index's sketch when a new series is added to the database.
-Instead, we will update in the associated shards, the in-memory sketches with the series and measurement data that gets persisted to the associated WAL file.
+Instead, we will update in the in-memory sketches with the series and measurement data in the associated WAL sketches.
 
 ##### Removing series and measurements
 
 The HyperLogLog family of algorithms unfortunately do not support removing values from the sketch, since the sketch itself is lossy and does not contain enough information to support deletions.
 However, we will improve the accuracy of estimations by maintaining estimates of the number of series and measurements deleted from a database.
 
-In the case of series removal, a tombstone entry is added to the WAL.
-When this occurs we will add the tombstoned series to the tombstone series sketch for that database.
-
+In the case of series removal, for example, a tombstone entry is added to the appropriate WAL file tombstone sketch.
 In the case of measurement removal, we will maintain a similar tombstone sketch.
 Further, because removal of a measurement involves the removal of all series under that measurement, we will also need to add all those series to the tombstone series sketches.
 
+Any cardinality estimations will take these tombstoned sketches into consideration, though until a future compaction takes place there may still be some inaccuracy if a series has been added, removed and then added subsequently.
+
 ##### Fast compactions
 
-During a fast compaction, WAL data is merged into the associated TSI index.
-We can persist the in-memory series and measurement sketches to the TSI file since they will already represent the combined cardinality estimate for the TSI file once WAL data is merged in.
-We will also persist the in-memory tombstone sketches to the TSI file because once the compaction completes we will be removing the associated WAL files.
-
+During a fast compaction, WAL data is merged into a new TSI index file.
+We rebuild sketches in this TSI file, rather than carrying over the WAL sketches, because this allows us to deal with inaccuracies from adding/removing/adding a series.
+The four sketches are then persisted directly into the TSI index file.
 
 ##### Full compactions
 
 During a full compaction, tombstoned series and measurements are removed from the TSI indices.
-At this point all four sketches will need to be regenerated, though the tombstone sketches only need to be re-initialised.
-These new sketches would replace the current in-memory sketches.
+At this point, all four sketches will need to be regenerated again, though the tombstone sketches only need to be re-initialised.
 
 #### TSI file format
 
-We could extend the TSI file format to include a sketches block for series, measurement and tombstone data, which could be located after the Series Dictionary.
+A TSI file looks like the following:
 
 ```
-╔═══════Inverted Index═══════╗
+╔═══════TSI Index File═══════╗
 ║ ┌────────────────────────┐ ║
-║ │                        │ ║
-║ │   Series Dictionary    │ ║
-║ │                        │ ║
+║ │      Magic Number      │ ║
 ║ └────────────────────────┘ ║
 ║ ┌────────────────────────┐ ║
-║ │                        │ ║
-║ │        Sketches        │ ║
-║ │                        │ ║
+║ │   Measurements Block   │ ║
 ║ └────────────────────────┘ ║
-║ ┌────────Tag Set─────────┐ ║
-║ │┌──────────────────────┐│ ║
-║ ││   Tag Values Block   ││ ║
-║ │├──────────────────────┤│ ║
-║ ││   Tag Values Block   ││ ║
-║ │├──────────────────────┤│ ║
-║ ││    Tag Keys Block    ││ ║
-║ │└──────────────────────┘│ ║
+║ ┌────────────────────────┐ ║
+║ │       Tag Block        │ ║
 ║ └────────────────────────┘ ║
-║ ┌────────Tag Set─────────┐ ║
-║ │┌──────────────────────┐│ ║
-║ ││   Tag Values Block   ││ ║
-║ │├──────────────────────┤│ ║
-║ ││   Tag Values Block   ││ ║
-║ │├──────────────────────┤│ ║
-║ ││   Tag Values Block   ││ ║
-║ │├──────────────────────┤│ ║
-║ ││    Tag Keys Block    ││ ║
-║ │└──────────────────────┘│ ║
+║ ┌────────────────────────┐ ║
+║ │      Series Block      │ ║
 ║ └────────────────────────┘ ║
-║  ┌──────────────────────┐  ║
-║  │  Measurements Block  │  ║
-║  └──────────────────────┘  ║
+║ ┌────────────────────────┐ ║
+║ │     Index Trailer      │ ║
+║ └────────────────────────┘ ║
 ╚════════════════════════════╝
 ```
 
-The sketch block itself would contain a value indicating the number of sketches in the block.
-Each sketch block would then contain the size of the sketch data, and the sketch itself.
-The sketch may be a binary blob, perhaps generated by Go's `gob` package, or it may be a custom binary format of data comprising the HLL algorithm state and sketch.
-The exact format will be decided during implementation.
+Both the measurements block and the series block would contain two sketches each: two for the measurement/series cardinality estimates, and two for the measurement/series tombstoned cardinality estimates.
+As discussed previously, as TSI files are compacted down the tombstone sketches become empty, as tombstones are removed from the file.
+
+The sketches themselves will be located towards the end of the measurement and series blocks, before the trailer. For example, in the case of the measurements block:
 
 ```
-╔══════════════Sketches═══════════════╗
-║                                     ║
-║┌───────── Series Sketch ───────────┐║
-║│┌─────────────────────────────────┐│║
-║││       len(Sketch) <uint32>      ││║
-║│└─────────────────────────────────┘│║
-║│┌─────────────────────────────────┐│║
-║││         Sketch <byte...>        ││║
-║│└─────────────────────────────────┘│║
-║└───────────────────────────────────┘║
-║┌──────Tombstoned Series Sketch ────┐║
-║│┌─────────────────────────────────┐│║
-║││      len(Sketch) <uint32>       ││║
-║│└─────────────────────────────────┘│║
-║│┌─────────────────────────────────┐│║
-║││        Sketch <byte...>         ││║
-║│└─────────────────────────────────┘│║
-║└───────────────────────────────────┘║
-║┌─────── Measurements Sketch ───────┐║
-║│┌─────────────────────────────────┐│║
-║││       len(Sketch) <uint32>      ││║
-║│└─────────────────────────────────┘│║
-║│┌─────────────────────────────────┐│║
-║││         Sketch <byte...>        ││║
-║│└─────────────────────────────────┘│║
-║└───────────────────────────────────┘║
-║┌──Tombstoned Measurements Sketch ──┐║
-║│┌─────────────────────────────────┐│║
-║││      len(Sketch) <uint32>       ││║
-║│└─────────────────────────────────┘│║
-║│┌─────────────────────────────────┐│║
-║││        Sketch <byte...>         ││║
-║│└─────────────────────────────────┘│║
-║└───────────────────────────────────┘║
-╚═════════════════════════════════════╝
+╔══════════Measurements Block═══════════╗
+║ ┏━━━━━━━━━Measurement List━━━━━━━━━━┓ ║
+║ ┃ ┏━━━━━━━━━━Measurement━━━━━━━━━━━┓┃ ║
+║ ┃ ┃┌─────────────────────────────┐ ┃┃ ║
+║ ┃ ┃│        Flag <uint8>         │ ┃┃ ║
+║ ┃ ┃├─────────────────────────────┤ ┃┃ ║
+║ ┃ ┃│  Tag Block offset <uint64>  │ ┃┃ ║
+║ ┃ ┃├─────────────────────────────┤ ┃┃ ║
+║ ┃ ┃│   Tag Block Size <uint64>   │ ┃┃ ║
+║ ┃ ┃├─────────────────────────────┤ ┃┃ ║
+║ ┃ ┃│         Name <vint>         │ ┃┃ ║
+║ ┃ ┃├─────────────────────────────┤ ┃┃ ║
+║ ┃ ┃│     len(Series) <vint>      │ ┃┃ ║
+║ ┃ ┃├─────────────────────────────┤ ┃┃ ║
+║ ┃ ┃│    SeriesIDs <uint64...>    │ ┃┃ ║
+║ ┃ ┃└─────────────────────────────┘ ┃┃ ║
+║ ┃ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛┃ ║
+║ ┃                                   ┃ ║
+║ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ ║
+║ ┏━━━━━━━━━━━━Hash Index━━━━━━━━━━━━━┓ ║
+║ ┃ ┌───────────────────────────────┐ ┃ ║
+║ ┃ │  len(Measurements) <uint64>   │ ┃ ║
+║ ┃ ├───────────────────────────────┤ ┃ ║
+║ ┃ │  Measurement Offset <uint64>  │ ┃ ║
+║ ┃ ├───────────────────────────────┤ ┃ ║
+║ ┃ │  Measurement Offset <uint64>  │ ┃ ║
+║ ┃ └───────────────────────────────┘ ┃ ║
+║ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ ║
+║ ┌───────────────────────────────────┐ ║
+║ │         Sketch <byte...>          │ ║
+║ └───────────────────────────────────┘ ║
+║ ┌───────────────────────────────────┐ ║
+║ │    Tombstone Sketch <byte...>     │ ║
+║ └───────────────────────────────────┘ ║
+║ ┌───────────────────────────────────┐ ║
+║ │              Trailer              │ ║
+║ └───────────────────────────────────┘ ║
+╚═══════════════════════════════════════╝
 ```
 
 <!-- References -->
@@ -239,4 +220,4 @@ The exact format will be decided during implementation.
  [1]: http://static.googleusercontent.com/external_content/untrusted_dlcp/research.google.com/en/us/pubs/archive/40671.pdf
  [2]: http://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf
  [3]: https://en.wikipedia.org/wiki/Streaming_algorithm
- [4]: https://sites.google.com/site/murmurhash/
+ [4]: https://cyan4973.github.io/xxHash/
