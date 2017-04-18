@@ -184,6 +184,12 @@ func (h *Plus) Merge(s estimator.Sketch) error {
 		return fmt.Errorf("wrong type for merging: %T", other)
 	}
 
+	// Check the interface's value.
+	if other == nil {
+		// Nothing to do
+		return nil
+	}
+
 	if h.p != other.p {
 		return errors.New("precisions must be equal")
 	}
@@ -409,7 +415,7 @@ func (h *Plus) e() (float64, uint32) {
 	sum := 0.0
 	var count uint32
 	for _, val := range h.denseList {
-		sum += 1.0 / float64(uint32(1)<<val)
+		sum += 1.0 / float64(uint64(1)<<val)
 		if val == 0 {
 			count++
 		}
