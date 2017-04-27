@@ -9,7 +9,10 @@ import (
 	"time"
 
 	"github.com/influxdata/influxdb/models"
+	"github.com/tinylib/msgp/msgp"
 )
+
+//go:generate msgp
 
 // ResponseWriter is an interface for writing a response.
 type ResponseWriter interface {
@@ -28,6 +31,9 @@ func NewResponseWriter(w http.ResponseWriter, r *http.Request) ResponseWriter {
 	case "application/csv", "text/csv":
 		w.Header().Add("Content-Type", "text/csv")
 		rw.formatter = &csvFormatter{statementID: -1, Writer: w}
+	case "application/x-msgpack":
+		w.Header().Add("Content-Type", "application/x-msgpack")
+		rw.formatter = newMsgpackFormatter(w)
 	case "application/json":
 		fallthrough
 	default:
@@ -102,7 +108,8 @@ type csvFormatter struct {
 }
 
 func (w *csvFormatter) WriteResponse(resp Response) (n int, err error) {
-	csv := csv.NewWriter(w)
+	csv := csv.NewWriter(writer{Writer: w, n: &n})
+	defer csv.Flush()
 	for _, result := range resp.Results {
 		if result.StatementID != w.statementID {
 			// If there are no series in the result, skip past this result.
@@ -171,4 +178,49 @@ func (w *csvFormatter) WriteResponse(resp Response) (n int, err error) {
 		return n, err
 	}
 	return n, nil
+}
+
+type msgpackFormatter struct {
+	enc *msgp.Writer
+	n   int
+}
+
+func newMsgpackFormatter(w io.Writer) *msgpackFormatter {
+	mf := &msgpackFormatter{}
+	mf.enc = msgp.NewWriter(writer{Writer: w, n: &mf.n})
+	return mf
+}
+
+func (w *msgpackFormatter) WriteResponse(resp Response) (n int, err error) {
+	w.n = 0
+
+	w.enc.WriteMapHeader(1)
+	w.enc.WriteString("results")
+
+	w.enc.WriteArrayHeader(uint32(len(resp.Results)))
+	for _, result := range resp.Results {
+		w.enc.WriteMapHeader(1)
+		w.enc.WriteString("series")
+
+		w.enc.WriteArrayHeader(uint32(len(result.Series)))
+		for _, row := range result.Series {
+			err = row.EncodeMsg(w.enc)
+			if err != nil {
+				return 0, err
+			}
+		}
+	}
+	err = w.enc.Flush()
+	return w.n, err
+}
+
+type writer struct {
+	io.Writer
+	n *int
+}
+
+func (w writer) Write(data []byte) (n int, err error) {
+	n, err = w.Writer.Write(data)
+	*w.n += n
+	return n, err
 }

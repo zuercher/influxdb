@@ -22,6 +22,7 @@ The admin UI is removed and unusable in this release. The `[admin]` configuratio
 - [#8302](https://github.com/influxdata/influxdb/pull/8302): Write throughput/concurrency improvements
 - [#8273](https://github.com/influxdata/influxdb/issues/8273): Remove the admin UI.
 - [#8327](https://github.com/influxdata/influxdb/pull/8327): Update to go1.8.1
+- [#7154](https://github.com/influxdata/influxdb/pull/7154): Add msgpack handler for smart JSON encoding.
 
 ### Bugfixes
 
