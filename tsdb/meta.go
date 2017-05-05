@@ -1636,7 +1636,7 @@ func filter(a []uint64, v uint64) []uint64 {
 // contains a measurement name.
 func MeasurementFromSeriesKey(key string) string {
 	// Ignoring the error because the func returns "missing fields"
-	k, _, _ := models.ParseKey([]byte(key))
+	k, _ := models.ParseKey([]byte(key))
 	return escape.UnescapeString(k)
 }
 

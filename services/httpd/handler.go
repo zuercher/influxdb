@@ -92,7 +92,7 @@ type Handler struct {
 	}
 
 	PointsWriter interface {
-		WritePoints(database, retentionPolicy string, consistencyLevel models.ConsistencyLevel, points []models.Point) error
+		WritePoints(database, retentionPolicy string, consistencyLevel models.ConsistencyLevel, user string, points []models.Point) error
 	}
 
 	Config    *Config
@@ -596,16 +596,20 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *meta.
 		return
 	}
 
-	if h.Config.AuthEnabled && user == nil {
-		h.httpError(w, fmt.Sprintf("user is required to write to database %q", database), http.StatusForbidden)
-		return
-	}
+	userName := ""
 
 	if h.Config.AuthEnabled {
+		if user == nil {
+			h.httpError(w, fmt.Sprintf("user is required to write to database %q", database), http.StatusForbidden)
+			return
+		}
+
 		if err := h.WriteAuthorizer.AuthorizeWrite(user.Name, database); err != nil {
 			h.httpError(w, fmt.Sprintf("%q user is not authorized to write to database %q", user.Name, database), http.StatusForbidden)
 			return
 		}
+
+		userName = user.Name
 	}
 
 	// Handle gzip decoding of the body
@@ -668,7 +672,7 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *meta.
 	}
 
 	// Write points.
-	if err := h.PointsWriter.WritePoints(database, r.URL.Query().Get("rp"), consistency, points); influxdb.IsClientError(err) {
+	if err := h.PointsWriter.WritePoints(database, r.URL.Query().Get("rp"), consistency, userName, points); influxdb.IsClientError(err) {
 		atomic.AddInt64(&h.stats.PointsWrittenFail, int64(len(points)))
 		h.httpError(w, err.Error(), http.StatusBadRequest)
 		return
