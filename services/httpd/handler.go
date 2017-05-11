@@ -71,13 +71,13 @@ type Handler struct {
 
 	MetaClient interface {
 		Database(name string) *meta.DatabaseInfo
-		Authenticate(username, password string) (ui *meta.UserInfo, err error)
-		User(username string) (*meta.UserInfo, error)
+		Authenticate(username, password string) (ui meta.User, err error)
+		User(username string) (meta.User, error)
 		AdminUserExists() bool
 	}
 
 	QueryAuthorizer interface {
-		AuthorizeQuery(u *meta.UserInfo, query *influxql.Query, database string) error
+		AuthorizeQuery(u meta.User, query *influxql.Query, database string) error
 	}
 
 	WriteAuthorizer interface {
@@ -210,7 +210,7 @@ func (h *Handler) AddRoutes(routes ...Route) {
 		var handler http.Handler
 
 		// If it's a handler func that requires authorization, wrap it in authentication
-		if hf, ok := r.HandlerFunc.(func(http.ResponseWriter, *http.Request, *meta.UserInfo)); ok {
+		if hf, ok := r.HandlerFunc.(func(http.ResponseWriter, *http.Request, meta.User)); ok {
 			handler = authenticate(hf, h, h.Config.AuthEnabled)
 		}
 
@@ -277,7 +277,7 @@ func (h *Handler) writeHeader(w http.ResponseWriter, code int) {
 }
 
 // serveQuery parses an incoming query and, if valid, executes the query.
-func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user *meta.UserInfo) {
+func (h *Handler) serveQuery(w http.ResponseWriter, r *http.Request, user meta.User) {
 	atomic.AddInt64(&h.stats.QueryRequests, 1)
 	defer func(start time.Time) {
 		atomic.AddInt64(&h.stats.QueryRequestDuration, time.Since(start).Nanoseconds())
@@ -577,7 +577,7 @@ func (h *Handler) async(query *influxql.Query, results <-chan *influxql.Result) 
 }
 
 // serveWrite receives incoming series data in line protocol format and writes it to the database.
-func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *meta.UserInfo) {
+func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user meta.User) {
 	atomic.AddInt64(&h.stats.WriteRequests, 1)
 	atomic.AddInt64(&h.stats.ActiveWriteRequests, 1)
 	defer func(start time.Time) {
@@ -596,20 +596,16 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *meta.
 		return
 	}
 
-	userName := ""
-
 	if h.Config.AuthEnabled {
 		if user == nil {
 			h.httpError(w, fmt.Sprintf("user is required to write to database %q", database), http.StatusForbidden)
 			return
 		}
 
-		if err := h.WriteAuthorizer.AuthorizeWrite(user.Name, database); err != nil {
-			h.httpError(w, fmt.Sprintf("%q user is not authorized to write to database %q", user.Name, database), http.StatusForbidden)
+		if err := h.WriteAuthorizer.AuthorizeWrite(user.ID(), database); err != nil {
+			h.httpError(w, fmt.Sprintf("%q user is not authorized to write to database %q", user.ID(), database), http.StatusForbidden)
 			return
 		}
-
-		userName = user.Name
 	}
 
 	// Handle gzip decoding of the body
@@ -672,7 +668,7 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user *meta.
 	}
 
 	// Write points.
-	if err := h.PointsWriter.WritePoints(database, r.URL.Query().Get("rp"), consistency, userName, points); influxdb.IsClientError(err) {
+	if err := h.PointsWriter.WritePoints(database, r.URL.Query().Get("rp"), consistency, user.ID(), points); influxdb.IsClientError(err) {
 		atomic.AddInt64(&h.stats.PointsWrittenFail, int64(len(points)))
 		h.httpError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -959,14 +955,14 @@ func parseCredentials(r *http.Request) (*credentials, error) {
 //
 // There is one exception: if there are no users in the system, authentication is not required. This
 // is to facilitate bootstrapping of a system with authentication enabled.
-func authenticate(inner func(http.ResponseWriter, *http.Request, *meta.UserInfo), h *Handler, requireAuthentication bool) http.Handler {
+func authenticate(inner func(http.ResponseWriter, *http.Request, meta.User), h *Handler, requireAuthentication bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return early if we are not authenticating
 		if !requireAuthentication {
 			inner(w, r, nil)
 			return
 		}
-		var user *meta.UserInfo
+		var user meta.User
 
 		// TODO corylanou: never allow this in the future without users
 		if requireAuthentication && h.MetaClient.AdminUserExists() {

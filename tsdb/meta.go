@@ -338,6 +338,7 @@ func (m *Measurement) TagSets(shardID uint64, opt influxql.IteratorOptions) ([]*
 		if !s.Assigned(shardID) {
 			continue
 		}
+
 		tags := make(map[string]string, len(opt.Dimensions))
 
 		// Build the TagSet for this series.
