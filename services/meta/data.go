@@ -546,15 +546,6 @@ func (data *Data) DropSubscription(database, rp, name string) error {
 	return ErrSubscriptionNotFound
 }
 
-type User interface {
-	influxql.Authorizer
-	ID() string
-}
-
-func (u *UserInfo) ID() string {
-	return u.Name
-}
-
 func (data *Data) user(username string) *UserInfo {
 	for i := range data.Users {
 		if data.Users[i].Name == username {
@@ -1464,6 +1455,8 @@ func (cqi *ContinuousQueryInfo) unmarshal(pb *internal.ContinuousQueryInfo) {
 	cqi.Query = pb.GetQuery()
 }
 
+var _ influxql.Authorizer = (*UserInfo)(nil)
+
 // UserInfo represents metadata about a user in the system.
 type UserInfo struct {
 	// User's name.
@@ -1479,7 +1472,19 @@ type UserInfo struct {
 	Privileges map[string]influxql.Privilege
 }
 
-var _ influxql.Authorizer = (*UserInfo)(nil)
+type User interface {
+	influxql.Authorizer
+	ID() string
+	IsAdmin() bool
+}
+
+func (u *UserInfo) ID() string {
+	return u.Name
+}
+
+func (u *UserInfo) IsAdmin() bool {
+	return u.Admin
+}
 
 // AuthorizeDatabase returns true if the user is authorized for the given privilege on the given database.
 func (ui *UserInfo) AuthorizeDatabase(privilege influxql.Privilege, database string) bool {

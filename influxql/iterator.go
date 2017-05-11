@@ -707,7 +707,6 @@ type IteratorOptions struct {
 
 // newIteratorOptionsStmt creates the iterator options from stmt.
 func newIteratorOptionsStmt(stmt *SelectStatement, sopt *SelectOptions) (opt IteratorOptions, err error) {
-	opt.Authorizer = sopt.Authorizer
 
 	// Determine time range from the condition.
 	startTime, endTime, err := TimeRange(stmt.Condition)
@@ -780,6 +779,7 @@ func newIteratorOptionsStmt(stmt *SelectStatement, sopt *SelectOptions) (opt Ite
 	if sopt != nil {
 		opt.MaxSeriesN = sopt.MaxSeriesN
 		opt.InterruptCh = sopt.InterruptCh
+		opt.Authorizer = sopt.Authorizer
 	}
 
 	return opt, nil

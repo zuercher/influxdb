@@ -596,6 +596,8 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user meta.U
 		return
 	}
 
+	userName := ""
+
 	if h.Config.AuthEnabled {
 		if user == nil {
 			h.httpError(w, fmt.Sprintf("user is required to write to database %q", database), http.StatusForbidden)
@@ -606,6 +608,8 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user meta.U
 			h.httpError(w, fmt.Sprintf("%q user is not authorized to write to database %q", user.ID(), database), http.StatusForbidden)
 			return
 		}
+
+		userName = user.ID()
 	}
 
 	// Handle gzip decoding of the body
@@ -668,7 +672,7 @@ func (h *Handler) serveWrite(w http.ResponseWriter, r *http.Request, user meta.U
 	}
 
 	// Write points.
-	if err := h.PointsWriter.WritePoints(database, r.URL.Query().Get("rp"), consistency, user.ID(), points); influxdb.IsClientError(err) {
+	if err := h.PointsWriter.WritePoints(database, r.URL.Query().Get("rp"), consistency, userName, points); influxdb.IsClientError(err) {
 		atomic.AddInt64(&h.stats.PointsWrittenFail, int64(len(points)))
 		h.httpError(w, err.Error(), http.StatusBadRequest)
 		return
