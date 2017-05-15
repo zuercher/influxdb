@@ -78,4 +78,10 @@ OPTIONS
 -version::
   Outputs the version of the influx client.
 
+-retention-policy::
+  Writes the import data to the specified retention policy when using -import.
+
+-destination-database::
+  Writes the import data to the specified database when using -import.
+
 include::footer.txt[]
